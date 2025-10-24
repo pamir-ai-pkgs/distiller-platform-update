@@ -1,0 +1,8 @@
+# Installation file for distiller-migrator
+# Format: source destination
+
+# Migration scripts and tools
+# usr/share/distiller-migrator/* usr/share/distiller-migrator/
+
+# Command-line tools
+# usr/bin/distiller-migrate usr/bin/

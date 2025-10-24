@@ -1,0 +1,28 @@
+Source: distiller-migrator
+Section: admin
+Priority: optional
+Maintainer: Distiller Team <maintainer@distiller.local>
+Build-Depends: debhelper-compat (= 14)
+Standards-Version: 4.7.2
+Homepage: https://distiller.local
+Rules-Requires-Root: no
+
+Package: distiller-migrator
+Architecture: all
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         python3,
+         apt
+Description: Migration tool for Distiller platform package transitions
+ This package provides tools and scripts to migrate the Distiller platform
+ from the legacy pamir-ai package organization to the new pamir-ai-pkgs
+ organization.
+ .
+ The migrator handles:
+  * Repository configuration updates
+  * Package deprecation and replacement
+  * Smooth transition between package organizations
+  * Rollback capabilities for failed migrations
+ .
+ This tool is essential for maintaining system consistency during platform
+ updates and organizational changes.

@@ -1,0 +1,49 @@
+# Debian package build artifacts
+*.deb
+*.dsc
+*.tar.gz
+*.tar.xz
+*.changes
+*.buildinfo
+.debhelper/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/tmp/
+debian/distiller-migrator/
+debian/*.debhelper.log
+debian/*.substvars
+
+# Build directories
+build-area/
+../build-area/
+
+# Git-buildpackage
+.gbp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Editor files
+*~
+*.swp
+*.swo
+.*.sw?
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/

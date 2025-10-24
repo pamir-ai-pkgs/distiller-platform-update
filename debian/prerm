@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+# Pre-removal script for distiller-migrator
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Warn if migration is in progress
+        if [ -f /var/lib/distiller-migrator/migration-in-progress ]; then
+            echo "WARNING: Migration may be in progress!"
+            echo "Please ensure migration is complete before removing this package."
+        fi
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

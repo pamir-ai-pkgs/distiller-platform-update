@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+# Post-installation script for distiller-migrator
+
+case "$1" in
+    configure)
+        # Create migration state directory
+        mkdir -p /var/lib/distiller-migrator
+        chmod 755 /var/lib/distiller-migrator
+
+        # Create log directory
+        mkdir -p /var/log/distiller-migrator
+        chmod 755 /var/log/distiller-migrator
+
+        # Create backup directory for rollback capability
+        mkdir -p /var/backups/distiller-migrator
+        chmod 700 /var/backups/distiller-migrator
+
+        echo "distiller-migrator installed successfully"
+        echo "Migration tools are available at /usr/share/distiller-migrator/"
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

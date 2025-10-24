@@ -1,0 +1,4 @@
+# Lintian overrides for distiller-migrator
+
+# Migration tool may have empty directories initially
+distiller-migrator: package-contains-empty-directory

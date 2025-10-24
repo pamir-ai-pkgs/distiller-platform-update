@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+# Pre-installation script for distiller-migrator
+
+case "$1" in
+    install|upgrade)
+        # Check if system is ready for migration
+        if [ -f /etc/apt/sources.list.d/pamir-ai.list ]; then
+            echo "Detected legacy pamir-ai repository configuration"
+        fi
+        ;;
+
+    abort-upgrade)
+        ;;
+
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

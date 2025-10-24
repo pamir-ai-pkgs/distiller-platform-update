@@ -1,0 +1,9 @@
+distiller-migrator (1.0.0) unstable; urgency=medium
+
+  * Initial release of distiller-migrator
+  * Migration tool for pamir-ai to pamir-ai-pkgs transition
+  * Repository configuration management
+  * Package deprecation and replacement handling
+  * Rollback support for failed migrations
+
+ -- Distiller Team <maintainer@distiller.local>  Fri, 24 Oct 2025 00:00:00 +0000
