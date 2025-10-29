@@ -1,0 +1,4 @@
+VERSION usr/share/distiller-platform-update/
+usr/share/distiller-platform-update/data/* usr/share/distiller-platform-update/data/
+usr/share/distiller-platform-update/lib/* usr/share/distiller-platform-update/lib/
+usr/share/distiller-platform-update/scripts/* usr/share/distiller-platform-update/scripts/

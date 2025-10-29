@@ -1,0 +1,8 @@
+# SD card insertion/removal logging
+# Log SD card events (mmcblk[1-9] = SD cards, not eMMC)
+ACTION=="add", KERNEL=="mmcblk[1-9]", RUN+="/usr/bin/logger 'SD card inserted: %k'"
+ACTION=="remove", KERNEL=="mmcblk[1-9]", RUN+="/usr/bin/logger 'SD card removed: %k'"
+
+# Log USB card reader events
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{DEVTYPE}=="partition", RUN+="/usr/bin/logger 'USB card reader inserted: %k'"
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{DEVTYPE}=="partition", RUN+="/usr/bin/logger 'USB card reader removed: %k'"

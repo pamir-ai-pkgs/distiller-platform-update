@@ -1,141 +1,137 @@
-# distiller-migrator
+# distiller-platform-update
 
-Migration tool for transitioning Distiller platform packages from pamir-ai to pamir-ai-pkgs organization.
+Platform update tool for Distiller systems that automatically brings older system images up to parity with the latest pi-gen builds.
 
 ## Overview
 
-This package provides the migration framework for transitioning the Distiller CM5 platform from the legacy `pamir-ai` package organization to the new `pamir-ai-pkgs` organization. It handles repository configuration updates, package deprecation, replacement, and rollback capabilities.
+This package automatically applies system-level configuration updates during installation, ensuring all Distiller devices have consistent platform configuration regardless of when the base image was created.
 
-## Features
+## What It Updates
 
-- **Repository Migration**: Updates APT sources from pamir-ai to pamir-ai-pkgs
-- **Package Replacement**: Handles deprecation of old packages and installation of new ones
-- **Rollback Support**: Maintains backups for safe rollback if migration fails
-- **State Tracking**: Monitors migration progress and status
-- **Logging**: Comprehensive logging for troubleshooting
-
-## Directory Structure
-
-```
-/var/lib/distiller-migrator/    # State and configuration
-/var/log/distiller-migrator/    # Migration logs
-/var/backups/distiller-migrator/ # Rollback backups (preserved on purge)
-/usr/share/distiller-migrator/  # Migration scripts and tools
-```
-
-## Package Structure
-
-```
-debian/
-├── control              # Package metadata
-├── copyright            # License (MIT)
-├── rules                # Build rules
-├── changelog            # Version history
-├── compat               # Debhelper 14
-├── gbp.conf             # git-buildpackage config
-├── preinst              # Pre-installation checks
-├── postinst             # Post-installation setup
-├── prerm                # Pre-removal checks
-├── postrm               # Post-removal cleanup
-├── distiller-migrator.install        # File installation
-├── distiller-migrator.lintian-overrides  # Lintian overrides
-└── source/
-    └── format           # Source format
-```
-
-## Building
-
-```bash
-# Build the package
-dpkg-buildpackage -us -uc -b
-
-# Check with lintian
-lintian -I --show-overrides ../distiller-migrator_*.deb
-```
+- **APT Repositories**: Configures debian.griffo.io and apt.pamir.ai repositories with GPG keys
+- **Boot Configuration**: Optimizes CPU frequency, fan control, SPI, UART, and camera settings
+- **Hardware Support**: Installs udev rules for SD card automount and Pico devices
+- **Environment**: Configures SDK paths and adds distiller user to required groups (audio, video, spi, gpio, etc.)
+- **System Services**: Enables udisks2 for SD card automount with PolicyKit rules
 
 ## Installation
 
 ```bash
-sudo dpkg -i distiller-migrator_1.0.0_all.deb
-sudo apt-get install -f
+sudo apt install distiller-platform-update
 ```
 
-## Usage
+The package performs all updates automatically during installation. No manual configuration required.
 
-(Migration tools and commands to be implemented)
+## Supported Platforms
 
+- Raspberry Pi Compute Module 5 (CM5)
+- Radxa Zero 3 / 3W
+- ArmSom CM5 IO
+
+Platform is detected automatically via `/proc/cpuinfo` and `/proc/device-tree/model`.
+
+## How It Works
+
+The package tracks platform version in `/etc/distiller-platform-info` and only applies updates when upgrading from versions < 2.0.0. All operations are idempotent and safe to run multiple times.
+
+### Update Process
+
+1. Detect hardware platform
+2. Configure APT repositories and keyrings
+3. Set environment variables (DISTILLER_PLATFORM, PYTHONPATH, LD_LIBRARY_PATH)
+4. Install udev rules and PolicyKit automount configuration
+5. Patch `/boot/firmware/config.txt` and `/boot/firmware/cmdline.txt`
+6. Update platform version to 2.0.0
+
+### Boot Configuration
+
+Boot files are patched intelligently:
+- Creates timestamped backups in `/var/backups/distiller-platform-update/boot/`
+- Preserves user customizations within the Distiller configuration block
+- Comments out duplicate directives found outside the Distiller block
+- Safe to reinstall - will not overwrite user changes
+
+If boot issues occur after update, restore from backup:
 ```bash
-# Run migration
-# distiller-migrate --from pamir-ai --to pamir-ai-pkgs
-
-# Check migration status
-# distiller-migrate --status
-
-# Rollback migration
-# distiller-migrate --rollback
+sudo cp /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/config.txt
+sudo reboot
 ```
 
-## Migration Process
+## Verification
 
-The migrator handles:
+Check platform info after installation:
+```bash
+cat /etc/distiller-platform-info
+```
 
-1. **Pre-migration checks**
-   - Verify system state
-   - Backup current configuration
-   - Check available disk space
+Expected output:
+```
+DISTILLER_PLATFORM_VERSION=2.0.0
+DISTILLER_INSTALL_DATE=2025-10-29T15:30:00+0530
+DISTILLER_INSTALL_METHOD=apt
+DISTILLER_PLATFORM=cm5
+REPOS_CONFIGURED=yes
+ENVIRONMENT_CONFIGURED=yes
+AUTOMOUNT_CONFIGURED=yes
+HARDWARE_CONFIGURED=yes
+BOOT_CONFIGURED=yes
+```
 
-2. **Repository transition**
-   - Update APT sources
-   - Import new repository keys
-   - Update package lists
+Verify boot configuration:
+```bash
+grep -A 30 "Distiller CM5" /boot/firmware/config.txt
+```
 
-3. **Package replacement**
-   - Map old packages to new packages
-   - Handle deprecated packages
-   - Install new packages
-
-4. **Post-migration validation**
-   - Verify all packages installed correctly
-   - Update system configuration
-   - Clean up deprecated packages
-
-5. **Rollback (if needed)**
-   - Restore from backup
-   - Revert repository changes
-   - Reinstall previous packages
-
-## State Files
-
-- `/var/lib/distiller-migrator/migration-in-progress` - Migration lock file
-- `/var/lib/distiller-migrator/state.json` - Current migration state
-- `/var/backups/distiller-migrator/pre-migration/` - Pre-migration backup
-
-## Logs
-
-All migration activities are logged to `/var/log/distiller-migrator/migration.log`
-
-## Development
-
-### Adding Migration Scripts
-
-1. Create scripts in appropriate directory structure
-2. Update `debian/distiller-migrator.install` to install them
-3. Update documentation
-
-### Testing
+## Building from Source
 
 ```bash
-# Test package build
-dpkg-buildpackage -us -uc -b
+# Build Debian package
+just build
 
-# Test installation
-sudo dpkg -i ../distiller-migrator_*.deb
+# Install locally
+sudo dpkg -i dist/distiller-platform-update_2.0.0_all.deb
+```
+
+## Integration
+
+This package is part of the Distiller platform ecosystem:
+- **distiller-sdk**: Core hardware SDK
+- **distiller-genesis-***: Platform-specific base images
+- **distiller-services**: System services (WiFi provisioning, telemetry)
+
+Environment variables configured by this package ensure proper SDK integration for all Distiller software.
+
+## Troubleshooting
+
+### Platform detection fails
+```bash
+# Manually check platform
+/usr/share/distiller-platform-update/lib/platform-detect.sh
+cat /proc/device-tree/model
+```
+
+### Boot configuration issues
+All original boot files are backed up before modification:
+```bash
+ls -la /var/backups/distiller-platform-update/boot/
+```
+
+### Verify APT repositories
+```bash
+cat /etc/apt/sources.list.d/pamir-ai.list
+cat /etc/apt/sources.list.d/debian.griffo.io.list
+```
+
+### Check installation logs
+```bash
+journalctl -u dpkg -g "distiller-platform-update"
 ```
 
 ## License
 
-MIT License - See debian/copyright for details
+Copyright (c) 2025 PamirAI Incorporated
 
-## Maintainer
+## Support
 
-Distiller Team <maintainer@distiller.local>
+- Issues: https://github.com/pamir-ai-pkgs/distiller-platform-update/issues
+- Contact: founders@pamir.ai

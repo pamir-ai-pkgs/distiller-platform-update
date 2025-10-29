@@ -1,0 +1,2 @@
+# Raspberry Pi Pico USB device detection
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", SYMLINK+="pico", MODE="0660", GROUP="dialout"

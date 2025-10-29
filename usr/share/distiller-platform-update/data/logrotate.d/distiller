@@ -1,0 +1,8 @@
+/var/log/distiller-platform-update/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+}

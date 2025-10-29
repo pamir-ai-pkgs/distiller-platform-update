@@ -1,33 +1,39 @@
 #!/bin/bash
 set -e
 
-# Post-installation script for distiller-migrator
-
 case "$1" in
-    configure)
-        # Create migration state directory
-        mkdir -p /var/lib/distiller-migrator
-        chmod 755 /var/lib/distiller-migrator
+configure)
+	LIB_DIR="/usr/share/distiller-platform-update/lib"
+	PLATFORM_INFO="/etc/distiller-platform-info"
+	VERSION_FILE="/usr/share/distiller-platform-update/VERSION"
 
-        # Create log directory
-        mkdir -p /var/log/distiller-migrator
-        chmod 755 /var/log/distiller-migrator
+	# Create directories
+	mkdir -p /var/lib/distiller-platform-update
+	mkdir -p /var/log/distiller-platform-update
+	mkdir -p /var/backups/distiller-platform-update
+	mkdir -p /media
 
-        # Create backup directory for rollback capability
-        mkdir -p /var/backups/distiller-migrator
-        chmod 700 /var/backups/distiller-migrator
+	# Initialize platform info if needed
+	if [ ! -f "$PLATFORM_INFO" ]; then
+		platform=$("$LIB_DIR/platform-detect.sh")
+		cat >"$PLATFORM_INFO" <<EOF
+DISTILLER_PLATFORM_VERSION=$(cat "$VERSION_FILE")
+DISTILLER_INSTALL_DATE=$(date -Iseconds)
+DISTILLER_INSTALL_METHOD=apt
+DISTILLER_PLATFORM=$platform
+EOF
+	fi
 
-        echo "distiller-migrator installed successfully"
-        echo "Migration tools are available at /usr/share/distiller-migrator/"
-        ;;
+	# Run update orchestrator
+	"$LIB_DIR/update-orchestrator.sh"
+	;;
 
-    abort-upgrade|abort-remove|abort-deconfigure)
-        ;;
+abort-upgrade | abort-remove | abort-deconfigure) ;;
 
-    *)
-        echo "postinst called with unknown argument \`$1'" >&2
-        exit 1
-        ;;
+*)
+	echo "postinst called with unknown argument \`$1'" >&2
+	exit 1
+	;;
 esac
 
 #DEBHELPER#

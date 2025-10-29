@@ -10,26 +10,12 @@ debian/.debhelper/
 debian/debhelper-build-stamp
 debian/files
 debian/tmp/
-debian/distiller-migrator/
+debian/distiller-platform-update/
 debian/*.debhelper.log
 debian/*.substvars
 
-# Build directories
-build-area/
-../build-area/
-
-# Git-buildpackage
-.gbp/
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Build artifacts
 dist/
-build/
-.venv/
-venv/
-*.egg
 
 # Editor files
 *~
@@ -42,8 +28,3 @@ venv/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Test files
-.pytest_cache/
-.coverage
-htmlcov/

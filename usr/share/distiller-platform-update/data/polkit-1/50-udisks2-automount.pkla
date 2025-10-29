@@ -1,0 +1,6 @@
+[udisks2 auto-mount]
+Identity=unix-group:plugdev
+Action=org.freedesktop.udisks2.filesystem-mount;org.freedesktop.udisks2.filesystem-mount-system;org.freedesktop.udisks2.eject-media;org.freedesktop.udisks2.filesystem-unmount;org.freedesktop.udisks2.modify-device
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

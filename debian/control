@@ -1,28 +1,36 @@
-Source: distiller-migrator
+Source: distiller-platform-update
 Section: admin
 Priority: optional
-Maintainer: Distiller Team <maintainer@distiller.local>
-Build-Depends: debhelper-compat (= 14)
-Standards-Version: 4.7.2
-Homepage: https://distiller.local
+Maintainer: PamirAI Incorporated <founders@pamir.ai>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.0
+Homepage: https://github.com/pamir-ai-pkgs/distiller-platform-update
+Vcs-Git: https://github.com/pamir-ai-pkgs/distiller-platform-update.git
+Vcs-Browser: https://github.com/pamir-ai-pkgs/distiller-platform-update
 Rules-Requires-Root: no
 
-Package: distiller-migrator
+Package: distiller-platform-update
 Architecture: all
 Depends: ${misc:Depends},
-         ${python3:Depends},
-         python3,
-         apt
-Description: Migration tool for Distiller platform package transitions
- This package provides tools and scripts to migrate the Distiller platform
- from the legacy pamir-ai package organization to the new pamir-ai-pkgs
- organization.
+         apt,
+         systemd,
+         udev,
+         polkitd | policykit-1,
+         lsb-release,
+         curl
+Recommends: distiller-genesis-common | distiller-genesis-cm5 | distiller-genesis-rockchip,
+            ripgrep
+Description: Platform update tool for Distiller systems
+ Automatically applies platform-level system configuration updates to bring
+ older Distiller images up to parity with latest pi-gen builds.
  .
- The migrator handles:
-  * Repository configuration updates
-  * Package deprecation and replacement
-  * Smooth transition between package organizations
-  * Rollback capabilities for failed migrations
+ Updates are applied automatically during package installation/upgrade:
+  * APT repository configuration (debian.griffo.io, apt.pamir.ai)
+  * System hardware configuration (udev rules)
+  * Boot partition optimizations (CPU, fan, SPI, camera)
+  * SD card automount support (PolicyKit + udisks2)
+  * User and group permissions
+  * Environment variables
+  * NVM + Node.js v20.19.5 installation for distiller user
+  * Claude Code CLI installation (Anthropic AI development assistant)
  .
- This tool is essential for maintaining system consistency during platform
- updates and organizational changes.

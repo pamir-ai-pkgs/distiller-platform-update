@@ -1,0 +1,35 @@
+# Distiller CM5 Hardware Configuration
+
+# SPI for E-ink display
+dtoverlay=spi0-1cs,cs0_pin=8
+
+# UART console
+enable_uart=1
+
+# CPU frequency cap (80% of max = 1500MHz)
+arm_freq_min=600
+arm_freq=1500
+arm_boost=0
+
+# Undervolt for thermal management
+over_voltage=-3
+
+# PWM fan control via EEPROM
+[eeprom]
+temp_limit=80
+fan_temp0=35
+fan_temp1=45
+fan_temp2=55
+fan_temp3=65
+fan_speed0=80
+fan_speed1=140
+fan_speed2=200
+fan_speed3=255
+fan_hysteresis=2
+
+# Disable HDMI (headless operation)
+dtoverlay=disable-hdmi
+hdmi_blanking=1
+
+# OV5647 Camera
+dtoverlay=ov5647
