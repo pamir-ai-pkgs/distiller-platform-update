@@ -55,6 +55,7 @@ export DISTILLER_PLATFORM="$platform"
 "$SCRIPTS_DIR/env-vars.sh" "$platform"
 "$SCRIPTS_DIR/user-groups.sh" || true
 "$SCRIPTS_DIR/udev-rules.sh"
+"$SCRIPTS_DIR/sudoers-setup.sh"
 "$SCRIPTS_DIR/automount-setup.sh"
 "$SCRIPTS_DIR/logrotate-setup.sh" || true
 

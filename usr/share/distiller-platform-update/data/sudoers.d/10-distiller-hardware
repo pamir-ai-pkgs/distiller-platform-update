@@ -1,0 +1,48 @@
+# Distiller Hardware Access Rules
+
+# ==============================================================================
+# AUDIO HARDWARE CONTROLS
+# ==============================================================================
+# PamirAI soundcard I2C controls via sysfs
+
+# Microphone gain control (0-100)
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/devices/platform/*/*/i2c-[0-9]/[0-9]-[0-9][0-9][0-9][0-9]/input_gain
+distiller ALL=(root) NOPASSWD: /usr/bin/cat /sys/devices/platform/*/*/i2c-[0-9]/[0-9]-[0-9][0-9][0-9][0-9]/input_gain
+
+# Speaker volume control (0-100)
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/devices/platform/*/*/i2c-[0-9]/[0-9]-[0-9][0-9][0-9][0-9]/volume_level
+distiller ALL=(root) NOPASSWD: /usr/bin/cat /sys/devices/platform/*/*/i2c-[0-9]/[0-9]-[0-9][0-9][0-9][0-9]/volume_level
+
+# ==============================================================================
+# LED CONTROLS
+# ==============================================================================
+# RGB LED controls via kernel driver sysfs interface
+# Supports up to 10 LEDs (led0-led9)
+
+# RGB color components (0-255)
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/red
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/green
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/blue
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/brightness
+
+# Animation controls (mode: static/blink/fade/rainbow, timing: 100/200/500/1000)
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/mode
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/timing
+
+# Linux LED triggers (heartbeat-rgb, breathing-rgb, rainbow-rgb, none)
+distiller ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/leds/pamir\:led[0-9]/trigger
+
+# ==============================================================================
+# NETWORK OPERATIONS
+# ==============================================================================
+# Limited nmcli commands for WiFi provisioning service
+# Read-only operations (list, show, status) don't require sudo
+
+# WiFi scanning (requires sudo to trigger active scan)
+distiller ALL=(root) NOPASSWD: /usr/bin/nmcli device wifi rescan
+
+# WiFi connection management (write operations only)
+distiller ALL=(root) NOPASSWD: /usr/bin/nmcli device wifi connect *
+distiller ALL=(root) NOPASSWD: /usr/bin/nmcli connection up *
+distiller ALL=(root) NOPASSWD: /usr/bin/nmcli connection down *
+distiller ALL=(root) NOPASSWD: /usr/bin/nmcli connection delete *
