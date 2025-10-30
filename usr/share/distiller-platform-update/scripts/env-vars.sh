@@ -16,6 +16,12 @@ else
 	echo "DISTILLER_PLATFORM=$platform" >>/etc/environment
 fi
 
+if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
+	mkdir -p /var/backups/distiller-platform-update
+	cp /etc/environment /var/backups/distiller-platform-update/environment.$(date +%Y%m%d_%H%M%S)
+	sed -i 's|/opt/distiller-cm5-sdk|/opt/distiller-sdk|g' /etc/environment
+fi
+
 while IFS= read -r line; do
 	[ -z "$line" ] && continue
 	[[ "$line" =~ ^[[:space:]]*# ]] && continue
