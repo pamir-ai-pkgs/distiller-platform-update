@@ -7,7 +7,8 @@ source /usr/share/distiller-platform-update/lib/shared.sh
 	exit 1
 }
 
-cp "$DATA_DIR/polkit-1/rules.d/"*.rules /etc/polkit-1/rules.d/
+mkdir -p /etc/polkit-1/localauthority/50-local.d
+cp "$DATA_DIR/polkit-1/"*.pkla /etc/polkit-1/localauthority/50-local.d/
 systemctl enable udisks2 2>/dev/null || true
 systemctl restart udisks2 2>/dev/null || true
 
