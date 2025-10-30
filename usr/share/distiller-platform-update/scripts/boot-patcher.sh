@@ -191,3 +191,5 @@ patch_config() {
 backup_boot
 patch_cmdline
 patch_config
+
+exit 0
