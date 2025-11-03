@@ -4,365 +4,290 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Platform update tool for Distiller systems that automatically applies system-level configuration updates to bring older Distiller images up to parity with the latest pi-gen builds. This package is designed to be installed once via APT and performs idempotent platform updates during installation/upgrade.
+System configuration updater that brings older Distiller device images up to parity with latest builds. Architecture-independent Debian package that automatically applies platform-level updates during installation/upgrade.
 
-**Package Name**: distiller-platform-update
-**Version**: 2.0.0
-**Architecture**: all (architecture-independent)
-**Type**: Debian package with postinst automation
+**Package Type**: Debian package (architecture: all)
+**Language**: Bash shell scripts
+**Target Platform**: ARM64 Linux (Raspberry Pi CM5, Radxa Zero 3/3W, ArmSom CM5 IO)
+**Installation Path**: `/usr/share/distiller-platform-update`
 
-## Purpose
-
-This tool transforms older Distiller system images by:
-- Configuring APT repositories (debian.griffo.io, apt.pamir.ai)
-- Installing udev rules for hardware (SD card, Pico)
-- Patching boot partition configuration (config.txt, cmdline.txt)
-- Setting up SD card automount (PolicyKit + udisks2)
-- Configuring environment variables and user permissions
-- Setting up log rotation for Distiller services
-
-The tool tracks platform version in `/etc/distiller-platform-info` and only applies updates when upgrading from versions < 2.0.0.
-
-## Build System
-
-### Building the Package
+## Build Commands
 
 ```bash
 # Build Debian package
 just build
 
-# The package will be created in dist/
-# Output: dist/distiller-platform-update_2.0.0_all.deb
+# Clean build artifacts
+just clean
+
+# Update changelog (before version bump)
+dch -i
 ```
 
-### Available Just Recipes
-
-```bash
-just --list              # Show all recipes
-just build              # Build Debian package (uses debuild)
-just clean              # Clean build artifacts
-just changelog          # Update debian/changelog (uses dch -i)
-```
-
-### Build Process
-
-The build system uses `debuild` with these options:
-- `-us -uc`: No signing
-- `-b`: Binary-only build
-- `-d`: Skip dependency checks
-- `--lintian-opts --profile=debian`: Run lintian checks
-
-Built packages are moved to `dist/` and temporary build artifacts are cleaned up.
+The build process uses `debuild` with parallel compilation and creates `.deb` in `dist/` directory.
 
 ## Architecture
 
-### Key Components
+### Update Orchestration Flow
 
-**1. Platform Detection** (`lib/platform-detect.sh`)
-- Detects hardware platform by reading `/proc/cpuinfo` and `/proc/device-tree/model`
-- Supports: cm5 (Raspberry Pi CM5), radxa-zero3, armsom-cm5
-- Returns "unknown" for unsupported platforms
+The package uses a multi-phase update system triggered by `debian/postinst`:
 
-**2. Boot Configuration Patcher** (`lib/boot-patcher.sh`)
-- Patches `/boot/firmware/config.txt` and `/boot/firmware/cmdline.txt`
-- Uses marker comments to track Distiller configuration blocks
-- Performs smart merge: preserves user customizations while updating defaults
-- Handles duplicate directives by commenting them out with explanations
-- Backs up original files to `/var/backups/distiller-platform-update/boot/`
+1. **Platform Detection** (`lib/platform-detect.sh`)
+   - Reads `/proc/cpuinfo` and `/proc/device-tree/model` to identify hardware
+   - Returns: `cm5`, `radxa-zero3`, `armsom-cm5`, or `unknown`
 
-**Key boot-patcher features:**
-- Idempotent: Can be run multiple times safely
-- Preserves section headers ([eeprom], etc.)
-- Special handling for dtoverlay/dtparam (can have multiple instances)
-- Comments out duplicates found outside Distiller block
+2. **Version Check** (`lib/update-orchestrator.sh`)
+   - Compares `/etc/distiller-platform-info` version with `UPDATE_THRESHOLD_VERSION` (2.0.0)
+   - Incremental update path: Only installs Claude Code if missing
+   - Full update path: Runs all update phases sequentially
 
-**3. Post-Installation Script** (`debian/postinst`)
-- Main orchestrator that runs during package installation
-- Checks platform version in `/etc/distiller-platform-info`
-- Only applies updates if upgrading from version < 2.0.0
-- Four-phase update process:
-  1. APT repository configuration
-  2. Environment variables and user groups
-  3. Hardware rules and automount
-  4. Boot partition patching
+3. **Update Phases** (executed in order):
+   - `apt-repos.sh` - APT repository configuration with GPG keys
+   - `env-vars.sh` - Environment variables (`DISTILLER_PLATFORM`, `PYTHONPATH`, `LD_LIBRARY_PATH`)
+   - `user-groups.sh` - Add distiller user to hardware groups (audio, video, spi, gpio, i2c)
+   - `udev-rules.sh` - SD card automount and Pico device rules
+   - `sudoers-setup.sh` - Passwordless sudo for hardware access
+   - `automount-setup.sh` - PolicyKit configuration for udisks2
+   - `logrotate-setup.sh` - Log rotation for `/var/log/distiller-platform-update/`
+   - `boot-patcher.sh` - Boot partition configuration (requires reboot)
+   - `nvm-install.sh` - NVM + Node.js v20.19.5 for distiller user
+   - `claude-code-installer.sh` - Claude Code CLI installation
 
-**4. Configuration Data** (`usr/share/distiller-platform-update/data/`)
-- `apt/sources.list.d/`: Repository configuration files
-- `apt/keyrings/`: GPG keys for repositories
-- `boot/`: Boot configuration additions (config.txt, cmdline.txt)
-- `environment/`: Environment variables for SDK integration
-- `udev/`: Hardware detection rules
-- `polkit-1/`: PolicyKit rules for automount
-- `logrotate.d/`: Log rotation configuration
+4. **Version Tracking**
+   - Updates `DISTILLER_PLATFORM_VERSION` in `/etc/distiller-platform-info`
+   - Stores installation metadata (date, method, platform, configuration flags)
 
-### Platform Info File
+### Boot Configuration Patcher
 
-The tool creates and maintains `/etc/distiller-platform-info`:
+`boot-patcher.sh` implements intelligent boot file patching with these constraints:
 
-```
-DISTILLER_PLATFORM_VERSION=2.0.0
-DISTILLER_INSTALL_DATE=2025-10-29T15:30:00+0530
-DISTILLER_INSTALL_METHOD=apt
-DISTILLER_PLATFORM=cm5
-REPOS_CONFIGURED=yes
-ENVIRONMENT_CONFIGURED=yes
-AUTOMOUNT_CONFIGURED=yes
-HARDWARE_CONFIGURED=yes
-BOOT_CONFIGURED=yes
-```
+**Marker-Based Block Management**:
+- Uses markers `# Distiller CM5 Hardware Configuration` / `# End Distiller CM5 Hardware Configuration`
+- Extracts existing Distiller block via `extract_distiller_block()` (returns line range `start:end`)
+- Preserves user customizations within block, appends to "User customizations" section
 
-Feature flags track which updates have been applied.
+**Duplicate Handling**:
+- `comment_out_duplicates()` searches for directives outside Distiller block
+- Comments duplicates with `# (Moved to Distiller section)` prefix
+- Handles `dtoverlay=`, `dtparam=`, and standard key-value directives differently
 
-### Boot Configuration Strategy
+**Idempotency**:
+- Creates timestamped backups in `/var/backups/distiller-platform-update/boot/`
+- Merges new directives from `data/boot/config.additions` with existing block
+- Preserves user-added directives not in template
 
-**cmdline.txt patching:**
-- Appends kernel parameters: `earlyprintk loglevel=8`
-- Maintains single-line format (required by Raspberry Pi bootloader)
-- Checks for existing parameters before adding
+**Section Awareness**:
+- Tracks `[section]` headers (e.g., `[cm5]`, `[all]`)
+- Directive keys use `section:key` format internally
 
-**config.txt patching:**
-- Intelligent block-based merging
-- Preserves user customizations within Distiller block
-- Comments out duplicate directives found elsewhere
-- Handles sections like [eeprom] correctly
-- Supports dtoverlay/dtparam with different values
+**Directive Removal**:
+- `remove_setting()` removes deprecated settings (e.g., `over_voltage`)
+- Optionally removes associated comment lines matching regex pattern
 
-The boot patcher uses marker comments:
-```
-# Distiller CM5 Hardware Configuration
-... config directives ...
-# End Distiller CM5 Hardware Configuration
+### Shared Library (`lib/shared.sh`)
+
+Common constants and functions used across scripts:
+
+```bash
+PLATFORM_INFO="/etc/distiller-platform-info"
+UPDATE_THRESHOLD_VERSION="2.0.0"
+VERSION_FILE="/usr/share/distiller-platform-update/VERSION"
+
+get_platform_version()      # Read current version from platform info
+update_platform_version()   # Update version in platform info
+read_version_file()         # Read VERSION file
+log_error()                 # Log to /var/log/distiller-platform-update/platform-update.log
 ```
 
-### Installation Paths
+All scripts source `shared.sh` via:
+```bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/shared.sh"
+```
 
-- Package data: `/usr/share/distiller-platform-update/`
-- Libraries: `/usr/share/distiller-platform-update/lib/`
-- Configuration templates: `/usr/share/distiller-platform-update/data/`
-- Runtime state: `/var/lib/distiller-platform-update/`
-- Logs: `/var/log/distiller-platform-update/`
-- Backups: `/var/backups/distiller-platform-update/`
-
-## Debian Packaging
-
-### Package Structure
+## File Structure
 
 ```
+usr/share/distiller-platform-update/
+├── lib/
+│   ├── shared.sh              # Common functions, constants
+│   ├── platform-detect.sh     # Hardware platform detection
+│   └── update-orchestrator.sh # Main update orchestration logic
+├── scripts/                   # Individual update phase scripts
+│   ├── apt-repos.sh
+│   ├── boot-patcher.sh
+│   ├── env-vars.sh
+│   ├── udev-rules.sh
+│   ├── user-groups.sh
+│   ├── automount-setup.sh
+│   ├── sudoers-setup.sh
+│   ├── logrotate-setup.sh
+│   ├── nvm-install.sh
+│   └── claude-code-installer.sh
+└── data/                      # Configuration templates and files
+    ├── apt/
+    │   ├── keyrings/          # GPG keys for repositories
+    │   └── sources.list.d/    # APT source lists
+    ├── boot/
+    │   ├── cmdline.additions  # Kernel command line parameters
+    │   └── config.additions   # Boot config directives
+    ├── environment/           # Environment variable templates
+    ├── polkit-1/              # PolicyKit rules
+    ├── udev/rules.d/          # Udev rules
+    ├── sudoers.d/             # Sudoers configuration
+    └── logrotate.d/           # Logrotate configuration
+
 debian/
-├── control              # Package metadata, dependencies
-├── changelog            # Version history (managed by dch)
-├── postinst            # Main update orchestration
-├── preinst             # Pre-installation checks
-├── prerm               # Pre-removal cleanup
-├── postrm              # Post-removal cleanup
-├── rules               # debhelper build rules
-├── source/format       # Source package format
-└── distiller-platform-update.install  # File installation map
+├── control                    # Package metadata, dependencies
+├── postinst                   # Triggers update-orchestrator.sh
+├── postrm                     # Cleanup on removal
+└── changelog                  # Version history
 ```
 
-### Version Management
+## Development Guidelines
+
+### Adding New Update Phases
+
+1. Create script in `usr/share/distiller-platform-update/scripts/`
+2. Source `../lib/shared.sh` at top of script
+3. Add error handling: `set -e` and appropriate exit codes
+4. Add script invocation to `lib/update-orchestrator.sh` in correct phase order
+5. Make script idempotent - safe to run multiple times
+6. Add corresponding flag to `/etc/distiller-platform-info` (e.g., `COMPONENT_CONFIGURED=yes`)
+
+### Modifying Boot Configuration
+
+Edit `usr/share/distiller-platform-update/data/boot/config.additions`:
+- Use comments to explain each directive
+- Group related directives with section headers `[section]`
+- `boot-patcher.sh` will merge changes intelligently on next package upgrade
+
+### Testing Boot Patcher Logic
 
 ```bash
-# Update package version
-dch -v 2.1.0            # Set specific version
-dch -i                  # Increment version
-dch -a "Description"    # Add changelog entry
+# Test on development system (non-destructive)
+sudo ./usr/share/distiller-platform-update/scripts/boot-patcher.sh
 
-# After updating changelog, rebuild
-just build
-```
-
-### Dependencies
-
-Required packages (automatically installed):
-- apt (repository management)
-- systemd (service management)
-- udev (hardware rules)
-- polkitd or policykit-1 (automount authorization)
-
-Recommended packages (optional but suggested):
-- distiller-genesis-common
-- distiller-genesis-cm5
-- distiller-genesis-rockchip
-
-## Testing & Debugging
-
-### Manual Installation
-
-```bash
-# Build and install locally
-just build
-sudo dpkg -i dist/distiller-platform-update_2.0.0_all.deb
-
-# Check platform info after installation
-cat /etc/distiller-platform-info
-
-# Verify APT repositories
-ls -la /etc/apt/sources.list.d/ | grep -E "debian.griffo|pamir-ai"
-cat /etc/apt/sources.list.d/pamir-ai.list
-
-# Check boot configuration
-cat /boot/firmware/config.txt | grep -A 30 "Distiller CM5"
-cat /boot/firmware/cmdline.txt
-```
-
-### Testing Boot Patcher
-
-```bash
-# Run boot patcher manually (requires root)
-sudo /usr/share/distiller-platform-update/lib/boot-patcher.sh
-
-# Check backups
+# Check backup created
 ls -la /var/backups/distiller-platform-update/boot/
 
-# Verify no duplicates in config.txt
-grep -n "dtoverlay=spi0-1cs" /boot/firmware/config.txt
+# Verify changes
+diff /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/config.txt
+
+# Restore if needed
+sudo cp /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/config.txt
 ```
 
-### Platform Detection
+### Version Bumping
 
 ```bash
-# Test platform detection
+# Update changelog (interactive editor)
+dch -v 2.1.0-1
+
+# Or quick append
+dch -a "Description of change"
+
+# Update VERSION file
+echo "2.1.0" > VERSION
+
+# Build and test
+just build
+sudo dpkg -i dist/distiller-platform-update_2.1.0_all.deb
+cat /etc/distiller-platform-info  # Verify version updated
+```
+
+### Debugging Update Failures
+
+```bash
+# Check platform detection
 /usr/share/distiller-platform-update/lib/platform-detect.sh
 
-# Manual platform check
-cat /proc/cpuinfo | grep "Raspberry Pi Compute Module 5"
-cat /proc/device-tree/model
+# View installation logs
+journalctl -u dpkg -g "distiller-platform-update"
+
+# Check platform info
+cat /etc/distiller-platform-info
+
+# Manual update orchestration (testing)
+sudo /usr/share/distiller-platform-update/lib/update-orchestrator.sh
+
+# View update logs
+tail -f /var/log/distiller-platform-update/platform-update.log
 ```
 
-### Simulating Upgrades
+## Key Implementation Patterns
 
-To test the upgrade path from old versions:
+### Idempotent Script Design
+
+All update scripts must be idempotent:
 
 ```bash
-# Create fake old platform info
-sudo bash -c 'cat > /etc/distiller-platform-info <<EOF
-DISTILLER_PLATFORM_VERSION=1.0.0
-DISTILLER_INSTALL_DATE=$(date -Iseconds)
-DISTILLER_INSTALL_METHOD=apt
-DISTILLER_PLATFORM=cm5
-EOF'
+# Check before modify
+if [ ! -f "$TARGET_FILE" ]; then
+    cp "$SOURCE_FILE" "$TARGET_FILE"
+fi
 
-# Reinstall package to trigger upgrade logic
-sudo dpkg -i dist/distiller-platform-update_2.0.0_all.deb
-
-# Verify all updates applied
-cat /etc/distiller-platform-info | grep "=yes"
+# Use grep to check existing configuration
+if ! grep -q "pattern" "$CONFIG_FILE"; then
+    echo "new_config" >> "$CONFIG_FILE"
+fi
 ```
 
-## Important Implementation Notes
+### Safe File Operations
 
-### Idempotency
+```bash
+# Create backups before modification
+mkdir -p "$BACKUP_DIR"
+cp -a "$ORIGINAL" "$BACKUP_DIR/$(basename $ORIGINAL).$(date +%Y%m%d_%H%M%S)"
 
-All update operations are idempotent and safe to run multiple times:
-- Platform version checks prevent redundant updates
-- Boot patcher checks for existing configuration before adding
-- File operations verify existence before modification
-- Feature flags track completed updates
+# Use temporary files for complex edits
+sed 's/pattern/replacement/' "$FILE" > "${FILE}.tmp"
+mv "${FILE}.tmp" "$FILE"
+```
 
 ### Error Handling
 
-The postinst script uses defensive error handling:
-- Platform detection failures default to "unknown" instead of exiting
-- File copy failures print warnings but continue execution
-- Boot patcher failures are logged but don't abort installation
-- Invalid VERSION file format falls back to "2.0.0"
-
-### Boot Configuration Risks
-
-**IMPORTANT**: Boot configuration changes can prevent system from booting. The boot patcher:
-- Always creates timestamped backups before modification
-- Validates file existence before patching
-- Uses safe sed operations with in-place editing
-- Preserves exact formatting of cmdline.txt (single line)
-
-If boot fails after update:
-1. Boot into recovery mode
-2. Restore from backup: `/var/backups/distiller-platform-update/boot/`
-3. Check dmesg/kernel logs for boot errors
-
-### User Groups
-
-The postinst adds the `distiller` user to required groups:
-- netdev: Network management
-- input: Input device access
-- i2c, spi, gpio: Hardware interfaces
-- dialout: Serial port access
-- audio, video: Media hardware
-
-## Common Development Workflows
-
-### Making Changes to Boot Configuration
-
 ```bash
-# 1. Edit the configuration template
-vim usr/share/distiller-platform-update/data/boot/config.additions
+set -e  # Exit on error
 
-# 2. Rebuild package
-just build
+# Critical operations
+command || {
+    log_error "Operation failed"
+    exit 1
+}
 
-# 3. Test on a VM or test device (NEVER production)
-sudo dpkg -i dist/distiller-platform-update_2.0.0_all.deb
-
-# 4. Verify boot configuration was updated correctly
-cat /boot/firmware/config.txt
-
-# 5. Test reboot
-sudo reboot
-
-# 6. If boot fails, restore from backup
-sudo cp /var/backups/distiller-platform-update/boot/config.txt.YYYYMMDD_HHMMSS /boot/firmware/config.txt
+# Non-fatal operations
+"$SCRIPTS_DIR/optional-feature.sh" || true
 ```
 
-### Adding New Platform Support
+### Platform-Specific Logic
 
 ```bash
-# 1. Update platform-detect.sh
-vim usr/share/distiller-platform-update/lib/platform-detect.sh
+platform=$("$LIB_DIR/platform-detect.sh")
+export DISTILLER_PLATFORM="$platform"
 
-# Add new detection logic:
-# elif grep -q "New Board" /proc/device-tree/model 2>/dev/null; then
-#     echo "new-board"
-
-# 2. Update postinst if platform needs special handling
-vim debian/postinst
-
-# 3. Test detection
-./usr/share/distiller-platform-update/lib/platform-detect.sh
-
-# 4. Rebuild and test
-just build
+case "$platform" in
+cm5)
+    # Raspberry Pi CM5 specific
+    ;;
+radxa-zero3)
+    # Radxa Zero 3/3W specific
+    ;;
+armsom-cm5)
+    # ArmSom CM5 IO specific
+    ;;
+*)
+    log_error "Unsupported platform: $platform"
+    exit 1
+    ;;
+esac
 ```
 
-### Updating Package Version
+## Critical Constraints
 
-```bash
-# 1. Update VERSION file
-echo "2.1.0" > VERSION
-
-# 2. Update changelog
-dch -v 2.1.0 "Description of changes"
-
-# 3. Rebuild
-just clean
-just build
-
-# 4. Verify version in built package
-dpkg-deb -I dist/distiller-platform-update_2.1.0_all.deb | grep Version
-```
-
-## Integration with Distiller Ecosystem
-
-This package is part of the larger Distiller platform:
-- **distiller-sdk**: Core hardware SDK (requires PYTHONPATH, LD_LIBRARY_PATH)
-- **distiller-genesis-***: Platform-specific base images
-- **distiller-services**: System services (WiFi, telemetry, etc.)
-
-The platform-update tool ensures all images, regardless of when they were built, have consistent system configuration for running Distiller packages.
-
-Environment variables configured by this tool:
-- `DISTILLER_PLATFORM`: Detected hardware platform (cm5, radxa-zero3, armsom-cm5)
-- `PYTHONPATH`: Includes `/opt/distiller-sdk/src`
-- `LD_LIBRARY_PATH`: Includes `/opt/distiller-sdk/lib`
-
-These variables are written to `/etc/environment` for system-wide availability.
+- **Root Required**: All scripts assume `EUID -eq 0` (run via dpkg/apt)
+- **Boot Directory**: `/boot/firmware` must exist for boot patching (Raspberry Pi layout)
+- **Incremental Updates**: Version < 2.0.0 triggers full update, >= 2.0.0 only updates missing components
+- **Backup Safety**: Always create timestamped backups before modifying system files
+- **Non-Fatal Helpers**: Developer tools (NVM, Claude Code) use `|| true` to prevent package installation failure
+- **Marker Integrity**: Boot patcher relies on exact marker strings - do not modify marker text
