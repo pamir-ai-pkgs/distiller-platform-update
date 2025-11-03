@@ -11,9 +11,6 @@ arm_freq_min=600
 arm_freq=1500
 arm_boost=0
 
-# Undervolt for thermal management
-over_voltage=-3
-
 # PWM fan control via EEPROM
 [eeprom]
 temp_limit=80

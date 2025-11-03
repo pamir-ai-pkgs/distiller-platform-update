@@ -86,6 +86,42 @@ comment_out_duplicates() {
 	[ "$duplicates_found" -gt 0 ] && echo "Commented out $duplicates_found duplicate directive(s)"
 }
 
+remove_setting() {
+	local config_file="$1"
+	local setting_name="$2"
+	local comment_pattern="${3:-}"
+
+	[ ! -f "$config_file" ] && return 0
+	[ -z "$setting_name" ] && return 0
+
+	local block_range=$(extract_distiller_block "$config_file")
+	[ -z "$block_range" ] && return 0
+
+	local start_line=$(echo "$block_range" | cut -d: -f1)
+	local end_line=$(echo "$block_range" | cut -d: -f2)
+
+	# Find and remove setting line within Distiller block
+	local setting_line=$(sed -n "${start_line},${end_line}p" "$config_file" | grep -n "^[[:space:]]*${setting_name}=" | head -1 | cut -d: -f1)
+	[ -z "$setting_line" ] && return 0
+
+	local actual_line=$((start_line + setting_line - 1))
+
+	# Check if previous line is a related comment
+	local prev_line=$((actual_line - 1))
+	local prev_content=$(sed -n "${prev_line}p" "$config_file")
+
+	# If comment pattern provided and matches, remove both lines
+	if [ -n "$comment_pattern" ] && [[ "$prev_content" =~ $comment_pattern ]]; then
+		# Remove both comment and directive
+		sed -i "${prev_line},${actual_line}d" "$config_file"
+		echo "Removed deprecated ${setting_name} setting and comment"
+	else
+		# Remove only directive
+		sed -i "${actual_line}d" "$config_file"
+		echo "Removed deprecated ${setting_name} setting"
+	fi
+}
+
 patch_config() {
 	local config_file="$BOOT_DIR/config.txt" additions_file="$DATA_DIR/config.additions"
 	[ ! -f "$config_file" ] && {
@@ -189,6 +225,7 @@ patch_config() {
 }
 
 backup_boot
+remove_setting "$BOOT_DIR/config.txt" "over_voltage" "[Uu]ndervolt"
 patch_cmdline
 patch_config
 
