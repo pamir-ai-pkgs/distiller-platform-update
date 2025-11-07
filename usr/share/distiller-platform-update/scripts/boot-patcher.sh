@@ -11,7 +11,8 @@ MARKER_END="# End Distiller CM5 Hardware Configuration"
 
 backup_boot() {
 	mkdir -p "${BACKUP_DIR}/boot"
-	local timestamp=$(date +%Y%m%d_%H%M%S)
+	local timestamp
+	timestamp=$(date +%Y%m%d_%H%M%S)
 
 	if [ -f "$BOOT_DIR/cmdline.txt" ]; then
 		if ! cp -a "$BOOT_DIR/cmdline.txt" "${BACKUP_DIR}/boot/cmdline.txt.$timestamp"; then
@@ -34,7 +35,8 @@ patch_cmdline() {
 		return 1
 	}
 
-	local additions=$(cat "$DATA_DIR/cmdline.additions")
+	local additions
+	additions=$(cat "$DATA_DIR/cmdline.additions")
 	[ "$(wc -l <"$BOOT_DIR/cmdline.txt")" -ne 1 ] && echo "WARNING: cmdline.txt has multiple lines" >&2
 
 	if ! grep -qF "$additions" "$BOOT_DIR/cmdline.txt"; then
@@ -66,20 +68,24 @@ find_duplicate_lines() {
 }
 
 comment_out_line() {
-	local line_content=$(sed -n "${2}p" "$1")
+	local line_content
+	line_content=$(sed -n "${2}p" "$1")
 	[[ "$line_content" =~ ^#\ \(Moved\ to\ Distiller\ section\) ]] && return 0
 	sed -i "${2}s/^/# (Moved to Distiller section) /" "$1"
 }
 
 extract_distiller_block() {
-	local start_line=$(grep -n "^${MARKER_START}" "$1" 2>/dev/null | head -1 | cut -d: -f1)
+	local start_line
+	start_line=$(grep -n "^${MARKER_START}" "$1" 2>/dev/null | head -1 | cut -d: -f1)
 	[ -z "$start_line" ] && return
 
-	local end_line=$(tail -n +"$start_line" "$1" | grep -n "^${MARKER_END}" 2>/dev/null | head -1 | cut -d: -f1)
+	local end_line
+	end_line=$(tail -n +"$start_line" "$1" | grep -n "^${MARKER_END}" 2>/dev/null | head -1 | cut -d: -f1)
 	if [ -n "$end_line" ]; then
 		echo "$start_line:$((start_line + end_line - 1))"
 	else
-		local next_section=$(tail -n +"$((start_line + 1))" "$1" | grep -n "^# Distiller\|^# Pamir" | head -1 | cut -d: -f1)
+		local next_section
+		next_section=$(tail -n +"$((start_line + 1))" "$1" | grep -n "^# Distiller\|^# Pamir" | head -1 | cut -d: -f1)
 		[ -n "$next_section" ] && echo "$start_line:$((start_line + next_section - 1))" || echo "$start_line:$(wc -l <"$1")"
 	fi
 }
@@ -110,21 +116,26 @@ remove_setting() {
 	[ ! -f "$config_file" ] && return 0
 	[ -z "$setting_name" ] && return 0
 
-	local block_range=$(extract_distiller_block "$config_file")
+	local block_range
+	block_range=$(extract_distiller_block "$config_file")
 	[ -z "$block_range" ] && return 0
 
-	local start_line=$(echo "$block_range" | cut -d: -f1)
-	local end_line=$(echo "$block_range" | cut -d: -f2)
+	local start_line
+	start_line=$(echo "$block_range" | cut -d: -f1)
+	local end_line
+	end_line=$(echo "$block_range" | cut -d: -f2)
 
 	# Find and remove setting line within Distiller block
-	local setting_line=$(sed -n "${start_line},${end_line}p" "$config_file" | grep -n "^[[:space:]]*${setting_name}=" | head -1 | cut -d: -f1)
+	local setting_line
+	setting_line=$(sed -n "${start_line},${end_line}p" "$config_file" | grep -n "^[[:space:]]*${setting_name}=" | head -1 | cut -d: -f1)
 	[ -z "$setting_line" ] && return 0
 
 	local actual_line=$((start_line + setting_line - 1))
 
 	# Check if previous line is a related comment
 	local prev_line=$((actual_line - 1))
-	local prev_content=$(sed -n "${prev_line}p" "$config_file")
+	local prev_content
+	prev_content=$(sed -n "${prev_line}p" "$config_file")
 
 	# If comment pattern provided and matches, remove both lines
 	if [ -n "$comment_pattern" ] && [[ "$prev_content" =~ $comment_pattern ]]; then
@@ -145,7 +156,8 @@ patch_config() {
 		return 1
 	}
 
-	local block_range=$(extract_distiller_block "$config_file")
+	local block_range
+	block_range=$(extract_distiller_block "$config_file")
 
 	if [ -z "$block_range" ]; then
 		comment_out_duplicates "$config_file" "$additions_file"
@@ -155,14 +167,19 @@ patch_config() {
 			echo "$MARKER_END"
 		} >>"$config_file"
 	else
-		local start_line=$(echo "$block_range" | cut -d: -f1)
-		local end_line=$(echo "$block_range" | cut -d: -f2)
+		local start_line
+		start_line=$(echo "$block_range" | cut -d: -f1)
+		local end_line
+		end_line=$(echo "$block_range" | cut -d: -f2)
 
 		comment_out_duplicates "$config_file" "$additions_file" "$start_line" "$end_line"
 
-		local before_block=$(head -n "$((start_line - 1))" "$config_file")
-		local during_block=$(sed -n "${start_line},${end_line}p" "$config_file")
-		local after_block=$(tail -n +"$((end_line + 1))" "$config_file")
+		local before_block
+		before_block=$(head -n "$((start_line - 1))" "$config_file")
+		local during_block
+		during_block=$(sed -n "${start_line},${end_line}p" "$config_file")
+		local after_block
+		after_block=$(tail -n +"$((end_line + 1))" "$config_file")
 
 		declare -A existing_directives
 		local current_section=""
@@ -175,7 +192,8 @@ patch_config() {
 				continue
 			fi
 
-			local line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+			local line_trimmed
+			line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
 			if [[ "$line_trimmed" =~ ^([^=]+)= ]]; then
 				local key="${BASH_REMATCH[1]}"
 				[[ "$key" == "dtoverlay" || "$key" == "dtparam" ]] && key="$line_trimmed"
@@ -203,7 +221,8 @@ patch_config() {
 				continue
 			}
 
-			local line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+			local line_trimmed
+			line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
 			if [[ "$line_trimmed" =~ ^([^=]+)= ]]; then
 				local key="${BASH_REMATCH[1]}"
 				[[ "$key" == "dtoverlay" || "$key" == "dtparam" ]] && key="$line_trimmed"
