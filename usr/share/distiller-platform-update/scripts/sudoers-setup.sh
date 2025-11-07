@@ -7,19 +7,33 @@ source /usr/share/distiller-platform-update/lib/shared.sh
 	exit 1
 }
 
-# Copy sudoers files from data directory to /etc/sudoers.d/
-cp "$DATA_DIR/sudoers.d/"* /etc/sudoers.d/
-
-# Set correct permissions and ownership
-chown root:root /etc/sudoers.d/10-distiller-hardware
-chmod 0440 /etc/sudoers.d/10-distiller-hardware
-
-# Validate syntax
-if visudo -c -f /etc/sudoers.d/10-distiller-hardware >/dev/null 2>&1; then
-	log_success "Sudoers file configured successfully"
-else
-	log_error "Sudoers file has syntax errors"
+# Stage, validate, then install sudoers files (prevent security window)
+tmp_dir=$(mktemp -d) || {
+	log_error "Cannot create temp directory"
 	exit 1
-fi
+}
+trap 'rm -rf "$tmp_dir"' EXIT
+
+shopt -s nullglob
+for file in "$DATA_DIR/sudoers.d/"*; do
+	filename=$(basename "$file")
+	cp "$file" "$tmp_dir/$filename"
+	chown root:root "$tmp_dir/$filename"
+	chmod 0440 "$tmp_dir/$filename"
+
+	# Validate BEFORE installing to production
+	if ! visudo -c -f "$tmp_dir/$filename" >/dev/null 2>&1; then
+		log_error "Sudoers file $filename has syntax errors"
+		exit 1
+	fi
+
+	# Only install if validation passed
+	cp "$tmp_dir/$filename" /etc/sudoers.d/
+done
+shopt -u nullglob
+
+trap - EXIT
+rm -rf "$tmp_dir"
+log_success "Sudoers file configured successfully"
 
 exit 0
