@@ -13,6 +13,10 @@ log_error() {
 	echo "[ERROR] $*" | tee -a "$LOG_DIR/platform-update.log" >&2
 }
 
+log_success() {
+	echo "[SUCCESS] $*" | tee -a "$LOG_DIR/platform-update.log"
+}
+
 get_platform_version() {
 	if [ ! -f "$PLATFORM_INFO" ]; then
 		echo ""

@@ -1,30 +1,33 @@
 #!/bin/bash
 set -e
 
+source /usr/share/distiller-platform-update/lib/shared.sh
+
 BOOT_DIR="/boot/firmware"
-BACKUP_DIR="/var/backups/distiller-platform-update/boot"
-DATA_DIR="/usr/share/distiller-platform-update/data/boot"
+BOOT_BACKUP_DIR="$BACKUP_DIR/boot"
+BOOT_DATA_DIR="$DATA_DIR/boot"
 MARKER_START="# Distiller CM5 Hardware Configuration"
 MARKER_END="# End Distiller CM5 Hardware Configuration"
 
 backup_boot() {
-	mkdir -p "$BACKUP_DIR"
+	mkdir -p "$BOOT_BACKUP_DIR"
 	local timestamp=$(date +%Y%m%d_%H%M%S)
-	[ -f "$BOOT_DIR/cmdline.txt" ] && cp -a "$BOOT_DIR/cmdline.txt" "$BACKUP_DIR/cmdline.txt.$timestamp"
-	[ -f "$BOOT_DIR/config.txt" ] && cp -a "$BOOT_DIR/config.txt" "$BACKUP_DIR/config.txt.$timestamp"
+	[ -f "$BOOT_DIR/cmdline.txt" ] && cp -a "$BOOT_DIR/cmdline.txt" "$BOOT_BACKUP_DIR/cmdline.txt.$timestamp"
+	[ -f "$BOOT_DIR/config.txt" ] && cp -a "$BOOT_DIR/config.txt" "$BOOT_BACKUP_DIR/config.txt.$timestamp"
 }
 
 patch_cmdline() {
 	[ ! -f "$BOOT_DIR/cmdline.txt" ] && {
-		echo "ERROR: $BOOT_DIR/cmdline.txt not found" >&2
+		log_error "$BOOT_DIR/cmdline.txt not found"
 		return 1
 	}
 
-	local additions=$(cat "$DATA_DIR/cmdline.additions")
+	local additions=$(cat "$BOOT_DATA_DIR/cmdline.additions")
 	[ "$(wc -l <"$BOOT_DIR/cmdline.txt")" -ne 1 ] && echo "WARNING: cmdline.txt has multiple lines" >&2
 
 	if ! grep -qF "$additions" "$BOOT_DIR/cmdline.txt"; then
 		echo "$(cat "$BOOT_DIR/cmdline.txt" | tr -d '\n') $additions" >"$BOOT_DIR/cmdline.txt"
+		log_success "Updated cmdline.txt"
 	fi
 }
 
@@ -83,7 +86,9 @@ comment_out_duplicates() {
 		done < <(find_duplicate_lines "$config_file" "$directive" "$start_line" "$end_line")
 	done < <(extract_desired_directives "$additions_file")
 
-	[ "$duplicates_found" -gt 0 ] && echo "Commented out $duplicates_found duplicate directive(s)"
+	if [ "$duplicates_found" -gt 0 ]; then
+		echo "Commented out $duplicates_found duplicate directive(s)"
+	fi
 }
 
 remove_setting() {
@@ -123,9 +128,9 @@ remove_setting() {
 }
 
 patch_config() {
-	local config_file="$BOOT_DIR/config.txt" additions_file="$DATA_DIR/config.additions"
+	local config_file="$BOOT_DIR/config.txt" additions_file="$BOOT_DATA_DIR/config.additions"
 	[ ! -f "$config_file" ] && {
-		echo "ERROR: $config_file not found" >&2
+		log_error "$config_file not found"
 		return 1
 	}
 
@@ -206,12 +211,12 @@ patch_config() {
 			fi
 		done <"$additions_file"
 
-		[ "${#existing_directives[@]}" -gt 0 ] && {
+		if [ "${#existing_directives[@]}" -gt 0 ]; then
 			new_block+=$'\n# User customizations\n'
 			for key in "${!existing_directives[@]}"; do
 				new_block+="${existing_directives[$key]}"$'\n'
 			done
-		}
+		fi
 
 		new_block+="$MARKER_END"
 
