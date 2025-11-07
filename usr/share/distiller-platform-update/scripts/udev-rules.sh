@@ -7,7 +7,11 @@ source /usr/share/distiller-platform-update/lib/shared.sh
 	exit 1
 }
 
-cp "$DATA_DIR/udev/rules.d/"*.rules /etc/udev/rules.d/
+shopt -s nullglob
+for file in "$DATA_DIR/udev/rules.d/"*.rules; do
+	cp "$file" /etc/udev/rules.d/
+done
+shopt -u nullglob
 udevadm control --reload-rules
 udevadm trigger
 

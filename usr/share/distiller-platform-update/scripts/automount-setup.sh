@@ -8,7 +8,11 @@ source /usr/share/distiller-platform-update/lib/shared.sh
 }
 
 mkdir -p /etc/polkit-1/localauthority/50-local.d
-cp "$DATA_DIR/polkit-1/"*.pkla /etc/polkit-1/localauthority/50-local.d/
+shopt -s nullglob
+for file in "$DATA_DIR/polkit-1/"*.pkla; do
+	cp "$file" /etc/polkit-1/localauthority/50-local.d/
+done
+shopt -u nullglob
 systemctl enable udisks2 2>/dev/null || true
 systemctl restart udisks2 2>/dev/null || true
 
