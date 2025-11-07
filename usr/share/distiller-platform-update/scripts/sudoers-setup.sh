@@ -19,6 +19,7 @@ if visudo -c -f /etc/sudoers.d/10-distiller-hardware >/dev/null 2>&1; then
 	log_success "Sudoers file configured successfully"
 else
 	log_error "Sudoers file has syntax errors"
+	exit 1
 fi
 
 exit 0

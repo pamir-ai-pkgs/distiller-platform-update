@@ -10,8 +10,18 @@ source "$SCRIPT_DIR/shared.sh"
 }
 
 # Get versions
-prev_version=$(get_platform_version)
-new_version=$(read_version_file)
+prev_version=$(get_platform_version) || prev_version=""
+# Treat empty/missing as 0.0.0 (triggers full update)
+[ -z "$prev_version" ] && prev_version="0.0.0"
+
+new_version=$(read_version_file) || {
+	log_error "Cannot read VERSION file"
+	exit 1
+}
+[ -z "$new_version" ] && {
+	log_error "Empty version from VERSION file"
+	exit 1
+}
 
 # Check if full update needed
 requires_update() {
@@ -33,9 +43,10 @@ if ! requires_update "$prev_version" "$UPDATE_THRESHOLD_VERSION"; then
 	if ! which claude &>/dev/null; then
 		# Install profile script for PATH
 		mkdir -p /etc/profile.d
-		[ -f "$DATA_DIR/environment/claude-code-profile.sh" ] &&
-			cp "$DATA_DIR/environment/claude-code-profile.sh" /etc/profile.d/ &&
+		if [ -f "$DATA_DIR/environment/claude-code-profile.sh" ]; then
+			cp "$DATA_DIR/environment/claude-code-profile.sh" /etc/profile.d/
 			chmod 644 /etc/profile.d/claude-code-profile.sh
+		fi
 
 		# Install Claude Code
 		"$SCRIPTS_DIR/claude-code-installer.sh" || true
@@ -47,8 +58,25 @@ if ! requires_update "$prev_version" "$UPDATE_THRESHOLD_VERSION"; then
 fi
 
 # Full update required - detect platform
-platform=$("$LIB_DIR/platform-detect.sh")
-export DISTILLER_PLATFORM="$platform"
+platform=$("$LIB_DIR/platform-detect.sh") || {
+	log_error "Platform detection script failed"
+	exit 1
+}
+[ -z "$platform" ] && {
+	log_error "Platform detection returned empty value"
+	exit 1
+}
+
+# Validate platform against whitelist (prevent injection)
+case "$platform" in
+	cm5|radxa-zero3|armsom-cm5)
+		export DISTILLER_PLATFORM="$platform"
+		;;
+	*)
+		log_error "Invalid platform detected: $platform"
+		exit 1
+		;;
+esac
 
 # Run update phases
 "$SCRIPTS_DIR/apt-repos.sh"

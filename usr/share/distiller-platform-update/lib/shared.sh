@@ -13,6 +13,10 @@ log_error() {
 	echo "[ERROR] $*" | tee -a "$LOG_DIR/platform-update.log" >&2
 }
 
+log_success() {
+	echo "[SUCCESS] $*" | tee -a "$LOG_DIR/platform-update.log"
+}
+
 get_platform_version() {
 	if [ ! -f "$PLATFORM_INFO" ]; then
 		echo ""
@@ -24,7 +28,22 @@ get_platform_version() {
 update_platform_version() {
 	local new_version="$1"
 	if grep -q "^DISTILLER_PLATFORM_VERSION=" "$PLATFORM_INFO" 2>/dev/null; then
-		sed -i "s/^DISTILLER_PLATFORM_VERSION=.*/DISTILLER_PLATFORM_VERSION=$new_version/" "$PLATFORM_INFO"
+		local tmp_file
+		tmp_file=$(mktemp) || {
+			log_error "Cannot create temp file"
+			return 1
+		}
+		trap 'rm -f "$tmp_file"' EXIT
+
+		if ! sed "s/^DISTILLER_PLATFORM_VERSION=.*/DISTILLER_PLATFORM_VERSION=$new_version/" "$PLATFORM_INFO" > "$tmp_file"; then
+			log_error "Cannot update platform version in $PLATFORM_INFO"
+			return 1
+		fi
+		if ! mv "$tmp_file" "$PLATFORM_INFO"; then
+			log_error "Cannot replace $PLATFORM_INFO"
+			return 1
+		fi
+		trap - EXIT
 	else
 		echo "DISTILLER_PLATFORM_VERSION=$new_version" >>"$PLATFORM_INFO"
 	fi

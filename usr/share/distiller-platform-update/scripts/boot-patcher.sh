@@ -1,17 +1,31 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
+
 BOOT_DIR="/boot/firmware"
-BACKUP_DIR="/var/backups/distiller-platform-update/boot"
 DATA_DIR="/usr/share/distiller-platform-update/data/boot"
 MARKER_START="# Distiller CM5 Hardware Configuration"
 MARKER_END="# End Distiller CM5 Hardware Configuration"
 
 backup_boot() {
-	mkdir -p "$BACKUP_DIR"
+	mkdir -p "${BACKUP_DIR}/boot"
 	local timestamp=$(date +%Y%m%d_%H%M%S)
-	[ -f "$BOOT_DIR/cmdline.txt" ] && cp -a "$BOOT_DIR/cmdline.txt" "$BACKUP_DIR/cmdline.txt.$timestamp"
-	[ -f "$BOOT_DIR/config.txt" ] && cp -a "$BOOT_DIR/config.txt" "$BACKUP_DIR/config.txt.$timestamp"
+
+	if [ -f "$BOOT_DIR/cmdline.txt" ]; then
+		if ! cp -a "$BOOT_DIR/cmdline.txt" "${BACKUP_DIR}/boot/cmdline.txt.$timestamp"; then
+			echo "ERROR: Cannot backup cmdline.txt" >&2
+			return 1
+		fi
+	fi
+
+	if [ -f "$BOOT_DIR/config.txt" ]; then
+		if ! cp -a "$BOOT_DIR/config.txt" "${BACKUP_DIR}/boot/config.txt.$timestamp"; then
+			echo "ERROR: Cannot backup config.txt" >&2
+			return 1
+		fi
+	fi
 }
 
 patch_cmdline() {
@@ -83,7 +97,9 @@ comment_out_duplicates() {
 		done < <(find_duplicate_lines "$config_file" "$directive" "$start_line" "$end_line")
 	done < <(extract_desired_directives "$additions_file")
 
-	[ "$duplicates_found" -gt 0 ] && echo "Commented out $duplicates_found duplicate directive(s)"
+	if [ "$duplicates_found" -gt 0 ]; then
+		echo "Commented out $duplicates_found duplicate directive(s)"
+	fi
 }
 
 remove_setting() {
@@ -206,21 +222,38 @@ patch_config() {
 			fi
 		done <"$additions_file"
 
-		[ "${#existing_directives[@]}" -gt 0 ] && {
+		if [ "${#existing_directives[@]}" -gt 0 ]; then
 			new_block+=$'\n# User customizations\n'
 			for key in "${!existing_directives[@]}"; do
 				new_block+="${existing_directives[$key]}"$'\n'
 			done
-		}
+		fi
 
 		new_block+="$MARKER_END"
+
+		local tmp_file
+		tmp_file=$(mktemp) || {
+			echo "ERROR: Cannot create temp file" >&2
+			return 1
+		}
+		trap 'rm -f "$tmp_file"' RETURN
 
 		{
 			echo "$before_block"
 			echo "$new_block"
 			echo "$after_block"
-		} >"${config_file}.tmp"
-		mv "${config_file}.tmp" "$config_file"
+		} >"$tmp_file"
+
+		if [ ! -s "$tmp_file" ]; then
+			echo "ERROR: Generated empty config file" >&2
+			return 1
+		fi
+
+		if ! mv "$tmp_file" "$config_file"; then
+			echo "ERROR: Cannot replace $config_file" >&2
+			return 1
+		fi
+		trap - RETURN
 	fi
 }
 
