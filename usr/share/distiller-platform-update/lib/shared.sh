@@ -22,6 +22,8 @@ get_platform_version() {
 		echo ""
 		return
 	fi
+	# Returns version if found, or "0.0.0" if file exists but no version line present
+	# This handles legacy images where /etc/distiller-platform-info exists without version
 	grep "^DISTILLER_PLATFORM_VERSION=" "$PLATFORM_INFO" 2>/dev/null | cut -d= -f2 || echo "0.0.0"
 }
 

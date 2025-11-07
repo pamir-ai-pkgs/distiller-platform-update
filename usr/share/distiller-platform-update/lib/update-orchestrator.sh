@@ -14,6 +14,13 @@ prev_version=$(get_platform_version) || prev_version=""
 # Treat empty/missing as 0.0.0 (triggers full update)
 [ -z "$prev_version" ] && prev_version="0.0.0"
 
+# Log detected version for debugging
+if [ "$prev_version" = "0.0.0" ]; then
+	log_success "No platform version detected"
+else
+	log_success "Detected platform version: $prev_version"
+fi
+
 new_version=$(read_version_file) || {
 	log_error "Cannot read VERSION file"
 	exit 1
