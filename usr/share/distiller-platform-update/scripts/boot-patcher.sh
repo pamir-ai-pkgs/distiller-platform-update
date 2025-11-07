@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 
 BOOT_DIR="/boot/firmware"
-DATA_DIR="/usr/share/distiller-platform-update/data/boot"
+readonly BOOT_DATA_DIR="$DATA_DIR/boot"
 MARKER_START="# Distiller CM5 Hardware Configuration"
 MARKER_END="# End Distiller CM5 Hardware Configuration"
 
@@ -36,7 +36,7 @@ patch_cmdline() {
 	}
 
 	local additions
-	additions=$(cat "$DATA_DIR/cmdline.additions")
+	additions=$(cat "$BOOT_DATA_DIR/cmdline.additions")
 	[ "$(wc -l <"$BOOT_DIR/cmdline.txt")" -ne 1 ] && echo "WARNING: cmdline.txt has multiple lines" >&2
 
 	if ! grep -qF "$additions" "$BOOT_DIR/cmdline.txt"; then
@@ -150,7 +150,7 @@ remove_setting() {
 }
 
 patch_config() {
-	local config_file="$BOOT_DIR/config.txt" additions_file="$DATA_DIR/config.additions"
+	local config_file="$BOOT_DIR/config.txt" additions_file="$BOOT_DATA_DIR/config.additions"
 	[ ! -f "$config_file" ] && {
 		echo "ERROR: $config_file not found" >&2
 		return 1
@@ -272,6 +272,7 @@ patch_config() {
 			echo "ERROR: Cannot replace $config_file" >&2
 			return 1
 		fi
+		chmod 644 "$config_file"
 		trap - RETURN
 	fi
 }

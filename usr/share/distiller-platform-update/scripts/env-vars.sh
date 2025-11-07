@@ -26,6 +26,7 @@ if grep -q "^DISTILLER_PLATFORM=" /etc/environment 2>/dev/null; then
 		echo "ERROR: Cannot replace /etc/environment" >&2
 		exit 1
 	fi
+	chmod 644 /etc/environment
 	trap - EXIT
 else
 	# Append new value
@@ -56,6 +57,7 @@ if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
 		echo "ERROR: Cannot replace /etc/environment" >&2
 		exit 1
 	fi
+	chmod 644 /etc/environment
 	trap - EXIT
 
 	echo "Migrated legacy SDK paths in /etc/environment (backup: $backup_file)"
