@@ -2,6 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=usr/share/distiller-platform-update/lib/shared.sh
 source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 
 BOOT_DIR="/boot/firmware"

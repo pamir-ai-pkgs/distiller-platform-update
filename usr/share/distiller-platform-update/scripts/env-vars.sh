@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-source /usr/share/distiller-platform-update/lib/shared.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=usr/share/distiller-platform-update/lib/shared.sh
+source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 [ "$EUID" -ne 0 ] && {
 	echo "Must run as root" >&2
 	exit 1
@@ -18,7 +20,7 @@ if grep -q "^DISTILLER_PLATFORM=" /etc/environment 2>/dev/null; then
 	}
 	trap 'rm -f "$tmp_file"' EXIT
 
-	if ! sed "s/^DISTILLER_PLATFORM=.*/DISTILLER_PLATFORM=$platform/" /etc/environment > "$tmp_file"; then
+	if ! sed "s/^DISTILLER_PLATFORM=.*/DISTILLER_PLATFORM=$platform/" /etc/environment >"$tmp_file"; then
 		echo "ERROR: Cannot update DISTILLER_PLATFORM in /etc/environment" >&2
 		exit 1
 	fi
@@ -30,7 +32,7 @@ if grep -q "^DISTILLER_PLATFORM=" /etc/environment 2>/dev/null; then
 	trap - EXIT
 else
 	# Append new value
-	echo "DISTILLER_PLATFORM=$platform" >> /etc/environment
+	echo "DISTILLER_PLATFORM=$platform" >>/etc/environment
 fi
 
 if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
@@ -49,7 +51,7 @@ if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
 	}
 	trap 'rm -f "$tmp_file"' EXIT
 
-	if ! sed 's|/opt/distiller-cm5-sdk|/opt/distiller-sdk|g' /etc/environment > "$tmp_file"; then
+	if ! sed 's|/opt/distiller-cm5-sdk|/opt/distiller-sdk|g' /etc/environment >"$tmp_file"; then
 		echo "ERROR: Cannot migrate SDK paths in /etc/environment" >&2
 		exit 1
 	fi

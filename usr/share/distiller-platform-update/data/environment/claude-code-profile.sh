@@ -4,11 +4,11 @@
 
 # Add /usr/local/bin to PATH if not already present
 case ":$PATH:" in
-    *:/usr/local/bin:*)
-        # Already in PATH
-        ;;
-    *)
-        # Add to PATH
-        export PATH="/usr/local/bin:$PATH"
-        ;;
+*:/usr/local/bin:*)
+	# Already in PATH
+	;;
+*)
+	# Add to PATH
+	export PATH="/usr/local/bin:$PATH"
+	;;
 esac

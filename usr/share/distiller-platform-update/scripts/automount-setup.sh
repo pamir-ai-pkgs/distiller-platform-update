@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-source /usr/share/distiller-platform-update/lib/shared.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=usr/share/distiller-platform-update/lib/shared.sh
+source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 [ "$EUID" -ne 0 ] && {
 	echo "Must run as root" >&2
 	exit 1
