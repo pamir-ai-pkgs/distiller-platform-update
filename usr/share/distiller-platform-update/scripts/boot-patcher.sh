@@ -17,14 +17,14 @@ backup_boot() {
 
 	if [ -f "$BOOT_DIR/cmdline.txt" ]; then
 		if ! cp -a "$BOOT_DIR/cmdline.txt" "${BACKUP_DIR}/boot/cmdline.txt.$timestamp"; then
-			echo "ERROR: Cannot backup cmdline.txt" >&2
+			log_error "Cannot backup cmdline.txt"
 			return 1
 		fi
 	fi
 
 	if [ -f "$BOOT_DIR/config.txt" ]; then
 		if ! cp -a "$BOOT_DIR/config.txt" "${BACKUP_DIR}/boot/config.txt.$timestamp"; then
-			echo "ERROR: Cannot backup config.txt" >&2
+			log_error "Cannot backup config.txt"
 			return 1
 		fi
 	fi
@@ -32,7 +32,7 @@ backup_boot() {
 
 patch_cmdline() {
 	[ ! -f "$BOOT_DIR/cmdline.txt" ] && {
-		echo "ERROR: $BOOT_DIR/cmdline.txt not found" >&2
+		log_error "$BOOT_DIR/cmdline.txt not found"
 		return 1
 	}
 
@@ -105,7 +105,7 @@ comment_out_duplicates() {
 	done < <(extract_desired_directives "$additions_file")
 
 	if [ "$duplicates_found" -gt 0 ]; then
-		echo "Commented out $duplicates_found duplicate directive(s)"
+		log_success "Commented out $duplicates_found duplicate directive(s)"
 	fi
 }
 
@@ -142,18 +142,18 @@ remove_setting() {
 	if [ -n "$comment_pattern" ] && [[ "$prev_content" =~ $comment_pattern ]]; then
 		# Remove both comment and directive
 		sed -i "${prev_line},${actual_line}d" "$config_file"
-		echo "Removed deprecated ${setting_name} setting and comment"
+		log_success "Removed deprecated ${setting_name} setting and comment"
 	else
 		# Remove only directive
 		sed -i "${actual_line}d" "$config_file"
-		echo "Removed deprecated ${setting_name} setting"
+		log_success "Removed deprecated ${setting_name} setting"
 	fi
 }
 
 patch_config() {
 	local config_file="$BOOT_DIR/config.txt" additions_file="$BOOT_DATA_DIR/config.additions"
 	[ ! -f "$config_file" ] && {
-		echo "ERROR: $config_file not found" >&2
+		log_error "$config_file not found"
 		return 1
 	}
 
@@ -253,7 +253,7 @@ patch_config() {
 
 		local tmp_file
 		tmp_file=$(mktemp) || {
-			echo "ERROR: Cannot create temp file" >&2
+			log_error "Cannot create temp file"
 			return 1
 		}
 		trap 'rm -f "$tmp_file"' RETURN
@@ -265,12 +265,12 @@ patch_config() {
 		} >"$tmp_file"
 
 		if [ ! -s "$tmp_file" ]; then
-			echo "ERROR: Generated empty config file" >&2
+			log_error "Generated empty config file"
 			return 1
 		fi
 
 		if ! mv "$tmp_file" "$config_file"; then
-			echo "ERROR: Cannot replace $config_file" >&2
+			log_error "Cannot replace $config_file"
 			return 1
 		fi
 		chmod 644 "$config_file"
@@ -279,8 +279,10 @@ patch_config() {
 }
 
 backup_boot
-remove_setting "$BOOT_DIR/config.txt" "over_voltage" "[Uu]ndervolt"
 patch_cmdline
 patch_config
+remove_setting "$BOOT_DIR/config.txt" "over_voltage" "[Uu]ndervolt"
+
+log_success "Boot configuration patched successfully"
 
 exit 0
