@@ -14,13 +14,21 @@ System configuration updater that brings older Distiller device images up to par
 ## Build Commands
 
 ```bash
-# Build Debian package
+# Build Debian package (default: arm64)
 just build
+
+# Build for specific architecture
+just build all        # Architecture-independent
+just build arm64      # ARM64 architecture
+just build amd64      # x86_64 architecture
 
 # Clean build artifacts
 just clean
 
-# Update changelog (before version bump)
+# Update changelog (git-buildpackage style)
+just changelog
+
+# Or manually with dch
 dch -i
 ```
 
@@ -97,6 +105,7 @@ get_platform_version()      # Read current version from platform info
 update_platform_version()   # Update version in platform info
 read_version_file()         # Read VERSION file
 log_error()                 # Log to /var/log/distiller-platform-update/platform-update.log
+log_success()               # Log success messages
 ```
 
 All scripts source `shared.sh` via:
@@ -104,6 +113,12 @@ All scripts source `shared.sh` via:
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/shared.sh"
 ```
+
+**Version Detection Edge Cases**:
+- File missing → returns empty string → treated as "0.0.0" → full update
+- File exists, no `DISTILLER_PLATFORM_VERSION` line → returns "0.0.0" → full update
+- File exists, version < 2.0.0 → full update
+- File exists, version >= 2.0.0 → incremental update (Claude Code only if missing)
 
 ## File Structure
 
@@ -146,14 +161,31 @@ debian/
 
 ## Development Guidelines
 
+### Shell Script Quality
+
+All shell scripts should follow these standards:
+
+```bash
+# Validate scripts with shellcheck
+shellcheck usr/share/distiller-platform-update/scripts/*.sh
+shellcheck usr/share/distiller-platform-update/lib/*.sh
+
+# Common patterns to follow
+set -e                        # Exit on error
+source "$SCRIPT_DIR/shared.sh"  # Use shared library
+[ "$EUID" -eq 0 ] || exit 1  # Check root access
+log_error "message"           # Consistent error logging
+```
+
 ### Adding New Update Phases
 
 1. Create script in `usr/share/distiller-platform-update/scripts/`
 2. Source `../lib/shared.sh` at top of script
 3. Add error handling: `set -e` and appropriate exit codes
-4. Add script invocation to `lib/update-orchestrator.sh` in correct phase order
-5. Make script idempotent - safe to run multiple times
-6. Add corresponding flag to `/etc/distiller-platform-info` (e.g., `COMPONENT_CONFIGURED=yes`)
+4. Validate with `shellcheck` before committing
+5. Add script invocation to `lib/update-orchestrator.sh` in correct phase order
+6. Make script idempotent - safe to run multiple times
+7. Add corresponding flag to `/etc/distiller-platform-info` (e.g., `COMPONENT_CONFIGURED=yes`)
 
 ### Modifying Boot Configuration
 
@@ -181,20 +213,22 @@ sudo cp /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/
 ### Version Bumping
 
 ```bash
-# Update changelog (interactive editor)
-dch -v 2.1.0-1
+# Automated way (git-buildpackage)
+just changelog                # Auto-generate from git log
+echo "2.1.0" > VERSION        # Update VERSION file
 
-# Or quick append
-dch -a "Description of change"
-
-# Update VERSION file
-echo "2.1.0" > VERSION
+# Manual way
+dch -v 2.1.0-1                # New version (interactive editor)
+dch -a "Description"          # Add changelog entry
+echo "2.1.0" > VERSION        # Update VERSION file
 
 # Build and test
 just build
 sudo dpkg -i dist/distiller-platform-update_2.1.0_all.deb
 cat /etc/distiller-platform-info  # Verify version updated
 ```
+
+**Note**: The VERSION file must be kept in sync with debian/changelog version.
 
 ### Debugging Update Failures
 
@@ -291,3 +325,45 @@ esac
 - **Backup Safety**: Always create timestamped backups before modifying system files
 - **Non-Fatal Helpers**: Developer tools (NVM, Claude Code) use `|| true` to prevent package installation failure
 - **Marker Integrity**: Boot patcher relies on exact marker strings - do not modify marker text
+- **VERSION Sync**: VERSION file must match debian/changelog version number
+
+## Quick Reference
+
+### Common Debug Commands
+
+```bash
+# Check current platform and version
+cat /etc/distiller-platform-info
+/usr/share/distiller-platform-update/lib/platform-detect.sh
+
+# View update logs
+tail -f /var/log/distiller-platform-update/platform-update.log
+journalctl -u dpkg -g "distiller-platform-update" --no-pager
+
+# Test individual update phases
+sudo /usr/share/distiller-platform-update/scripts/boot-patcher.sh
+sudo /usr/share/distiller-platform-update/scripts/apt-repos.sh
+sudo /usr/share/distiller-platform-update/lib/update-orchestrator.sh
+
+# Check boot configuration
+grep -A 30 "Distiller CM5 Hardware Configuration" /boot/firmware/config.txt
+ls -lat /var/backups/distiller-platform-update/boot/
+
+# Validate shell scripts
+shellcheck usr/share/distiller-platform-update/**/*.sh
+```
+
+### Build and Test Cycle
+
+```bash
+# Standard workflow
+just clean
+just changelog                # If using git-buildpackage
+echo "2.1.0" > VERSION       # Update version
+just build
+sudo dpkg -i dist/distiller-platform-update_*.deb
+
+# Verify installation
+cat /etc/distiller-platform-info
+tail /var/log/distiller-platform-update/platform-update.log
+```
