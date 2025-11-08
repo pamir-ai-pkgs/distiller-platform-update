@@ -1,13 +1,17 @@
 #!/bin/bash
 
-readonly PLATFORM_INFO="/etc/distiller-platform-info"
-readonly DATA_DIR="/usr/share/distiller-platform-update/data"
-readonly LIB_DIR="/usr/share/distiller-platform-update/lib"
-readonly SCRIPTS_DIR="/usr/share/distiller-platform-update/scripts"
-readonly BACKUP_DIR="/var/backups/distiller-platform-update"
-readonly LOG_DIR="/var/log/distiller-platform-update"
-readonly VERSION_FILE="/usr/share/distiller-platform-update/VERSION"
-readonly UPDATE_THRESHOLD_VERSION="2.0.0"
+# Export constants for use in sourcing scripts
+export PLATFORM_INFO="/etc/distiller-platform-info"
+export DATA_DIR="/usr/share/distiller-platform-update/data"
+export LIB_DIR="/usr/share/distiller-platform-update/lib"
+export SCRIPTS_DIR="/usr/share/distiller-platform-update/scripts"
+export BACKUP_DIR="/var/backups/distiller-platform-update"
+export LOG_DIR="/var/log/distiller-platform-update"
+export VERSION_FILE="/usr/share/distiller-platform-update/VERSION"
+export UPDATE_THRESHOLD_VERSION="2.0.0"
+
+# Mark as readonly after export
+readonly PLATFORM_INFO DATA_DIR LIB_DIR SCRIPTS_DIR BACKUP_DIR LOG_DIR VERSION_FILE UPDATE_THRESHOLD_VERSION
 
 log_error() {
 	echo "[ERROR] $*" | tee -a "$LOG_DIR/platform-update.log" >&2
@@ -37,7 +41,7 @@ update_platform_version() {
 		}
 		trap 'rm -f "$tmp_file"' EXIT
 
-		if ! sed "s/^DISTILLER_PLATFORM_VERSION=.*/DISTILLER_PLATFORM_VERSION=$new_version/" "$PLATFORM_INFO" > "$tmp_file"; then
+		if ! sed "s/^DISTILLER_PLATFORM_VERSION=.*/DISTILLER_PLATFORM_VERSION=$new_version/" "$PLATFORM_INFO" >"$tmp_file"; then
 			log_error "Cannot update platform version in $PLATFORM_INFO"
 			return 1
 		fi
