@@ -17,4 +17,12 @@ cp "$DATA_DIR/apt/sources.list.d/pamir-ai.list" /etc/apt/sources.list.d/
 cp "$DATA_DIR/apt/keyrings/debian.griffo.io.gpg" /etc/apt/trusted.gpg.d/
 cp "$DATA_DIR/apt/keyrings/pamir-ai-archive-keyring.gpg" /usr/share/keyrings/
 
+# Refresh package index after modifying repositories
+if ! apt update; then
+	log_error "apt update failed after adding repositories"
+	exit 1
+fi
+
+log_success "APT repositories configured and package index updated"
+
 exit 0
