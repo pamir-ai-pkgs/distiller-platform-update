@@ -49,9 +49,11 @@ update_platform_version() {
 			log_error "Cannot replace $PLATFORM_INFO"
 			return 1
 		fi
+		chmod 644 "$PLATFORM_INFO"
 		trap - EXIT
 	else
 		echo "DISTILLER_PLATFORM_VERSION=$new_version" >>"$PLATFORM_INFO"
+		chmod 644 "$PLATFORM_INFO"
 	fi
 }
 

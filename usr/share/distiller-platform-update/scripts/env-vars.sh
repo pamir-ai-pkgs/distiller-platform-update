@@ -33,6 +33,7 @@ if grep -q "^DISTILLER_PLATFORM=" /etc/environment 2>/dev/null; then
 else
 	# Append new value
 	echo "DISTILLER_PLATFORM=$platform" >>/etc/environment
+	chmod 644 /etc/environment
 fi
 
 if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
@@ -75,5 +76,8 @@ while IFS= read -r line; do
 	grep -q "^$var_name=" /etc/environment 2>/dev/null && continue
 	echo "$line" >>/etc/environment
 done <"$DATA_DIR/environment/distiller-vars.env"
+
+# Ensure /etc/environment is world-readable
+chmod 644 /etc/environment
 
 exit 0
