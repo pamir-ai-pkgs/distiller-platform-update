@@ -2,15 +2,29 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=usr/share/distiller-platform-update/lib/shared.sh
 source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 
 readonly LOG_FILE="$LOG_DIR/platform-update.log"
-INSTALL_SCRIPT_URL="https://claude.ai/install.sh"
 CLAUDE_BIN="/usr/local/bin/claude"
+REINSTALL_MODE=false
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--reinstall)
+		REINSTALL_MODE=true
+		shift
+		;;
+	*)
+		shift
+		;;
+	esac
+done
 
 check_dependencies() {
-	command -v curl &>/dev/null || {
-		log_error "curl not installed"
+	command -v npm &>/dev/null || {
+		log_error "npm not installed (required for Claude Code installation)"
 		return 1
 	}
 	command -v node &>/dev/null || {
@@ -26,37 +40,41 @@ check_dependencies() {
 	}
 }
 
-install_claude_code() {
-	curl --retry 3 --retry-delay 5 -fsSL "$INSTALL_SCRIPT_URL" -o /tmp/claude-install.sh 2>&1 | tee -a "$LOG_FILE" || {
-		log_error "Failed to download installer"
-		return 1
-	}
-
-	chmod +x /tmp/claude-install.sh
-	bash /tmp/claude-install.sh 2>&1 | tee -a "$LOG_FILE" || {
-		log_error "Installer failed"
-		rm -f /tmp/claude-install.sh
-		return 1
-	}
-
-	rm -f /tmp/claude-install.sh
-
-	[ -x "$CLAUDE_BIN" ] && "$CLAUDE_BIN" --version &>/dev/null || {
-		log_error "Installation completed but verification failed"
-		return 1
-	}
+uninstall_claude_code() {
+	if npm list -g @anthropic-ai/claude-code &>/dev/null; then
+		log_success "Uninstalling existing Claude Code installation"
+		npm uninstall -g --force @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE" || {
+			log_error "Failed to uninstall Claude Code"
+			return 1
+		}
+	fi
+	return 0
 }
 
-update_claude_code() {
-	[ -x "$CLAUDE_BIN" ] || return 1
-	"$CLAUDE_BIN" update 2>&1 | tee -a "$LOG_FILE" || true
+install_claude_code() {
+	log_success "Installing Claude Code via npm"
+	npm install -g --force @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE" || {
+		log_error "npm install failed"
+		return 1
+	}
+
+	if [ -x "$CLAUDE_BIN" ] && "$CLAUDE_BIN" --version &>/dev/null; then
+		log_success "Claude Code installation verified"
+		return 0
+	else
+		log_error "Installation completed but verification failed"
+		return 1
+	fi
 }
 
 main() {
 	check_dependencies || return 1
 
-	if [ -x "$CLAUDE_BIN" ] && "$CLAUDE_BIN" --version &>/dev/null; then
-		update_claude_code
+	if [ "$REINSTALL_MODE" = true ]; then
+		uninstall_claude_code || return 1
+		install_claude_code || return 1
+	elif [ -x "$CLAUDE_BIN" ] && "$CLAUDE_BIN" --version &>/dev/null; then
+		log_success "Claude Code already installed, skipping"
 	else
 		install_claude_code || return 1
 	fi
@@ -64,4 +82,4 @@ main() {
 	return 0
 }
 
-main "$@"
+main
