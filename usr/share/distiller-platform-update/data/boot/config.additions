@@ -1,5 +1,3 @@
-# Distiller CM5 Hardware Configuration
-
 # SPI for E-ink display
 dtoverlay=spi0-1cs,cs0_pin=8
 
@@ -11,22 +9,26 @@ arm_freq_min=600
 arm_freq=1500
 arm_boost=0
 
-# PWM fan control via EEPROM
-[eeprom]
-temp_limit=80
-fan_temp0=35
-fan_temp1=45
-fan_temp2=55
-fan_temp3=65
-fan_speed0=80
-fan_speed1=140
-fan_speed2=200
-fan_speed3=255
-fan_hysteresis=2
-
 # Disable HDMI (headless operation)
 dtoverlay=disable-hdmi
 hdmi_blanking=1
 
 # OV5647 Camera
 dtoverlay=ov5647
+
+# Enable EEPROM based PWM cooling fan for CM5
+dtparam=cooling_fan=on
+
+# PWM fan control
+dtparam=fan_temp0=35000      # First cooling level (35°C)
+dtparam=fan_temp0_hyst=2000  # Hysteresis (2°C)
+dtparam=fan_temp0_speed=80   # Fan speed (0-255)
+dtparam=fan_temp1=45000      # Second cooling level (45°C)
+dtparam=fan_temp1_hyst=2000  # Hysteresis (2°C)
+dtparam=fan_temp1_speed=140  # Second fan speed (0-255)
+dtparam=fan_temp2=55000      # Third cooling level (55°C)
+dtparam=fan_temp2_hyst=2000  # Hysteresis (2°C)
+dtparam=fan_temp2_speed=200  # Third fan speed (0-255)
+dtparam=fan_temp3=65000      # Fourth cooling level (65°C)
+dtparam=fan_temp3_hyst=2000  # Hysteresis (2°C)
+dtparam=fan_temp3_speed=255  # Fourth fan speed (0-255)
