@@ -17,7 +17,8 @@ Depends: ${misc:Depends},
          udev,
          polkitd | policykit-1,
          lsb-release,
-         curl
+         curl,
+         libblockdev-mdraid2
 Recommends: distiller-genesis-common | distiller-genesis-cm5 | distiller-genesis-rockchip,
             ripgrep
 Description: Platform update tool for Distiller systems
