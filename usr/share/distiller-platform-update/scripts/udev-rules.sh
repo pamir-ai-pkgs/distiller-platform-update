@@ -17,4 +17,6 @@ shopt -u nullglob
 udevadm control --reload-rules
 udevadm trigger
 
+log_success "Udev rules installed and reloaded"
+
 exit 0

@@ -11,4 +11,6 @@ source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 
 cp "$DATA_DIR/logrotate.d/distiller" /etc/logrotate.d/
 
+log_success "Log rotation configured"
+
 exit 0
