@@ -7,8 +7,10 @@ source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"
 
 BOOT_DIR="/boot/firmware"
 readonly BOOT_DATA_DIR="$DATA_DIR/boot"
-MARKER_START="# Distiller CM5 Hardware Configuration"
-MARKER_END="# End Distiller CM5 Hardware Configuration"
+readonly CONFIG_FILE="$BOOT_DIR/config.txt"
+readonly ADDITIONS_FILE="$BOOT_DATA_DIR/config.additions"
+readonly MARKER_START="# Distiller CM5 Hardware Configuration"
+readonly MARKER_END="# End Distiller CM5 Hardware Configuration"
 
 backup_boot() {
 	mkdir -p "${BACKUP_DIR}/boot"
@@ -22,8 +24,8 @@ backup_boot() {
 		fi
 	fi
 
-	if [ -f "$BOOT_DIR/config.txt" ]; then
-		if ! cp -a "$BOOT_DIR/config.txt" "${BACKUP_DIR}/boot/config.txt.$timestamp"; then
+	if [ -f "$CONFIG_FILE" ]; then
+		if ! cp -a "$CONFIG_FILE" "${BACKUP_DIR}/boot/config.txt.$timestamp"; then
 			log_error "Cannot backup config.txt"
 			return 1
 		fi
@@ -45,211 +47,153 @@ patch_cmdline() {
 	fi
 }
 
-extract_desired_directives() {
-	grep -v '^#' "$1" | grep -v '^[[:space:]]*$' | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//'
+# Remove deprecated settings with their comment blocks
+remove_deprecated_settings() {
+	local setting="$1"
+
+	# Find and remove all occurrences (reverse order to avoid line shifts)
+	local removed=0
+	while IFS=: read -r line_num _; do
+		# Find the start of the comment block above this setting
+		local block_start
+		block_start=$(find_comment_block_start "$line_num")
+
+		# Delete entire block (from first comment to directive)
+		for ((i = line_num; i >= block_start; i--)); do
+			sed -i "${i}d" "$CONFIG_FILE"
+			removed=$((removed + 1))
+		done
+	done < <(grep -n "^[[:space:]]*${setting}=" "$CONFIG_FILE" | tac)
+
+	if [ "$removed" -gt 0 ]; then
+		log_success "Removed $removed line(s) including deprecated setting: $setting"
+	fi
 }
 
-find_duplicate_lines() {
-	local config_file="$1" directive="$2" start_line="${3:-0}" end_line="${4:-0}"
+# Find the start of a comment block above a directive
+find_comment_block_start() {
+	local directive_line="$1"
+	local current_line=$((directive_line - 1))
+	local block_start="$directive_line"
 
-	local search_pattern
-	if [[ "$directive" =~ ^(dtoverlay|dtparam)= ]]; then
-		search_pattern="^[[:space:]]*${directive}"
-	elif [[ "$directive" =~ ^([^=]+)= ]]; then
-		search_pattern="^[[:space:]]*${BASH_REMATCH[1]}="
-	else
-		search_pattern="^[[:space:]]*${directive}"
-	fi
+	# Scan backwards for contiguous comments/empty lines
+	while [ "$current_line" -ge 1 ]; do
+		local line_content
+		line_content=$(sed -n "${current_line}p" "$CONFIG_FILE")
 
-	grep -n "$search_pattern" "$config_file" 2>/dev/null | while IFS=: read -r line_num line_content; do
-		[ "$start_line" -gt 0 ] && [ "$end_line" -gt 0 ] &&
-			[ "$line_num" -ge "$start_line" ] && [ "$line_num" -le "$end_line" ] && continue
-		echo "$line_num"
+		# Check if line is comment or empty
+		if [[ "$line_content" =~ ^[[:space:]]*# ]] || [[ "$line_content" =~ ^[[:space:]]*$ ]]; then
+			block_start="$current_line"
+			current_line=$((current_line - 1))
+		else
+			# Hit non-comment, stop scanning
+			break
+		fi
 	done
+
+	echo "$block_start"
 }
 
-comment_out_line() {
-	local line_content
-	line_content=$(sed -n "${2}p" "$1")
-	[[ "$line_content" =~ ^#\ \(Moved\ to\ Distiller\ section\) ]] && return 0
-	sed -i "${2}s/^/# (Moved to Distiller section) /" "$1"
-}
+# Delete duplicate directives outside the Distiller block
+delete_duplicates_outside_block() {
+	local start_line="$1"
+	local end_line="$2"
 
-extract_distiller_block() {
-	local start_line
-	start_line=$(grep -n "^${MARKER_START}" "$1" 2>/dev/null | head -1 | cut -d: -f1)
-	[ -z "$start_line" ] && return
+	# Extract directives from template (non-comment, non-empty lines)
+	local directives
+	directives=$(grep -v '^#' "$ADDITIONS_FILE" | grep -v '^[[:space:]]*$' | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
 
-	local end_line
-	end_line=$(tail -n +"$start_line" "$1" | grep -n "^${MARKER_END}" 2>/dev/null | head -1 | cut -d: -f1)
-	if [ -n "$end_line" ]; then
-		echo "$start_line:$((start_line + end_line - 1))"
-	else
-		local next_section
-		next_section=$(tail -n +"$((start_line + 1))" "$1" | grep -n "^# Distiller\|^# Pamir" | head -1 | cut -d: -f1)
-		[ -n "$next_section" ] && echo "$start_line:$((start_line + next_section - 1))" || echo "$start_line:$(wc -l <"$1")"
-	fi
-}
-
-comment_out_duplicates() {
-	local config_file="$1" additions_file="$2" start_line="${3:-0}" end_line="${4:-0}"
 	local duplicates_found=0
 
 	while IFS= read -r directive; do
 		[ -z "$directive" ] && continue
 		[[ "$directive" =~ ^\[.*\]$ ]] && continue
 
-		while IFS= read -r dup_line; do
-			[ -n "$dup_line" ] && comment_out_line "$config_file" "$dup_line" && duplicates_found=$((duplicates_found + 1))
-		done < <(find_duplicate_lines "$config_file" "$directive" "$start_line" "$end_line")
-	done < <(extract_desired_directives "$additions_file")
-
-	if [ "$duplicates_found" -gt 0 ]; then
-		log_success "Commented out $duplicates_found duplicate directive(s)"
-	fi
-}
-
-remove_setting() {
-	local config_file="$1"
-	local setting_name="$2"
-	local comment_pattern="${3:-}"
-
-	[ ! -f "$config_file" ] && return 0
-	[ -z "$setting_name" ] && return 0
-
-	local block_range
-	block_range=$(extract_distiller_block "$config_file")
-	[ -z "$block_range" ] && return 0
-
-	local start_line
-	start_line=$(echo "$block_range" | cut -d: -f1)
-	local end_line
-	end_line=$(echo "$block_range" | cut -d: -f2)
-
-	# Find and remove setting line within Distiller block
-	local setting_line
-	setting_line=$(sed -n "${start_line},${end_line}p" "$config_file" | grep -n "^[[:space:]]*${setting_name}=" | head -1 | cut -d: -f1)
-	[ -z "$setting_line" ] && return 0
-
-	local actual_line=$((start_line + setting_line - 1))
-
-	# Check if previous line is a related comment
-	local prev_line=$((actual_line - 1))
-	local prev_content
-	prev_content=$(sed -n "${prev_line}p" "$config_file")
-
-	# If comment pattern provided and matches, remove both lines
-	if [ -n "$comment_pattern" ] && [[ "$prev_content" =~ $comment_pattern ]]; then
-		# Remove both comment and directive
-		sed -i "${prev_line},${actual_line}d" "$config_file"
-		log_success "Removed deprecated ${setting_name} setting and comment"
-	else
-		# Remove only directive
-		sed -i "${actual_line}d" "$config_file"
-		log_success "Removed deprecated ${setting_name} setting"
-	fi
-}
-
-patch_config() {
-	local config_file="$BOOT_DIR/config.txt" additions_file="$BOOT_DATA_DIR/config.additions"
-	[ ! -f "$config_file" ] && {
-		log_error "$config_file not found"
-		return 1
-	}
-
-	local block_range
-	block_range=$(extract_distiller_block "$config_file")
-
-	if [ -z "$block_range" ]; then
-		comment_out_duplicates "$config_file" "$additions_file"
-		{
-			echo ""
-			cat "$additions_file"
-			echo "$MARKER_END"
-		} >>"$config_file"
-	else
-		local start_line
-		start_line=$(echo "$block_range" | cut -d: -f1)
-		local end_line
-		end_line=$(echo "$block_range" | cut -d: -f2)
-
-		comment_out_duplicates "$config_file" "$additions_file" "$start_line" "$end_line"
-
-		local before_block
-		before_block=$(head -n "$((start_line - 1))" "$config_file")
-		local during_block
-		during_block=$(sed -n "${start_line},${end_line}p" "$config_file")
-		local after_block
-		after_block=$(tail -n +"$((end_line + 1))" "$config_file")
-
-		declare -A existing_directives
-		local current_section=""
-
-		while IFS= read -r line; do
-			[[ "$line" =~ ^${MARKER_START}|^${MARKER_END}|^[[:space:]]*#|^[[:space:]]*$ ]] && continue
-
-			if [[ "$line" =~ ^\[([^\]]+)\] ]]; then
-				current_section="${BASH_REMATCH[1]}"
-				continue
-			fi
-
-			local line_trimmed
-			line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-			if [[ "$line_trimmed" =~ ^([^=]+)= ]]; then
-				local key="${BASH_REMATCH[1]}"
-				[[ "$key" == "dtoverlay" || "$key" == "dtparam" ]] && key="$line_trimmed"
-				[ -n "$current_section" ] && existing_directives["${current_section}:${key}"]="$line" || existing_directives["${key}"]="$line"
-			fi
-		done <<<"$during_block"
-
-		local new_block="$MARKER_START"$'\n'
-		current_section=""
-
-		while IFS= read -r line; do
-			[[ "$line" =~ ^[[:space:]]*# ]] && {
-				new_block+="$line"$'\n'
-				continue
-			}
-
-			if [[ "$line" =~ ^\[([^\]]+)\] ]]; then
-				current_section="${BASH_REMATCH[1]}"
-				new_block+="$line"$'\n'
-				continue
-			fi
-
-			[[ "$line" =~ ^[[:space:]]*$ ]] && {
-				new_block+="$line"$'\n'
-				continue
-			}
-
-			local line_trimmed
-			line_trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-			if [[ "$line_trimmed" =~ ^([^=]+)= ]]; then
-				local key="${BASH_REMATCH[1]}"
-				[[ "$key" == "dtoverlay" || "$key" == "dtparam" ]] && key="$line_trimmed"
-
-				local lookup_key
-				[ -n "$current_section" ] && lookup_key="${current_section}:${key}" || lookup_key="${key}"
-
-				if [ -n "${existing_directives[$lookup_key]}" ]; then
-					new_block+="${existing_directives[$lookup_key]}"$'\n'
-					unset "existing_directives[$lookup_key]"
-				else
-					new_block+="$line"$'\n'
-				fi
-			else
-				new_block+="$line"$'\n'
-			fi
-		done <"$additions_file"
-
-		if [ "${#existing_directives[@]}" -gt 0 ]; then
-			new_block+=$'\n# User customizations\n'
-			for key in "${!existing_directives[@]}"; do
-				new_block+="${existing_directives[$key]}"$'\n'
-			done
+		# For dtoverlay/dtparam, match exactly; for other settings, match the key
+		local key
+		local grep_pattern
+		if [[ "$directive" =~ ^(dtoverlay|dtparam)= ]]; then
+			key="$directive"
+			grep_pattern="^[[:space:]]*${key}"
+		elif [[ "$directive" =~ ^([^=]+)= ]]; then
+			key="${BASH_REMATCH[1]}"
+			grep_pattern="^[[:space:]]*${key}="
+		else
+			continue
 		fi
 
-		new_block+="$MARKER_END"
+		# Find all matching lines
+		local line_num
+		while IFS=: read -r line_num _; do
+			# Skip if within Distiller block range
+			if [ "$start_line" -gt 0 ] && [ "$end_line" -gt 0 ]; then
+				[ "$line_num" -ge "$start_line" ] && [ "$line_num" -le "$end_line" ] && continue
+			fi
+
+			# Find the start of the comment block
+			local block_start
+			block_start=$(find_comment_block_start "$line_num")
+
+			# Delete entire block (from first comment to directive)
+			for ((i = line_num; i >= block_start; i--)); do
+				sed -i "${i}d" "$CONFIG_FILE"
+				duplicates_found=$((duplicates_found + 1))
+			done
+
+			# Adjust end_line for all deleted lines
+			local deleted_lines=$((line_num - block_start + 1))
+			if [ "$end_line" -gt 0 ] && [ "$block_start" -lt "$end_line" ]; then
+				end_line=$((end_line - deleted_lines))
+			fi
+
+			log_success "Deleted block (lines $block_start-$line_num): $directive"
+		done < <(grep -n "$grep_pattern" "$CONFIG_FILE" | tac)
+
+	done <<<"$directives"
+
+	if [ "$duplicates_found" -gt 0 ]; then
+		log_success "Deleted $duplicates_found duplicate directive(s)"
+	fi
+}
+
+# Find first section marker
+find_first_section_marker() {
+	# Section markers are lines matching pattern [...]
+	grep -n '^\[[^]]\+\]' "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d: -f1
+}
+
+# Extract line range of existing Distiller block
+extract_distiller_block_range() {
+	local start_line
+	start_line=$(grep -n "^${MARKER_START}" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d: -f1)
+	[ -z "$start_line" ] && return 1
+
+	local end_line
+	end_line=$(tail -n +"$start_line" "$CONFIG_FILE" | grep -n "^${MARKER_END}" 2>/dev/null | head -1 | cut -d: -f1)
+	if [ -n "$end_line" ]; then
+		echo "$start_line:$((start_line + end_line - 1))"
+		return 0
+	fi
+
+	# No end marker - block is malformed, treat as no block
+	return 1
+}
+
+# Insert new Distiller block
+insert_distiller_block() {
+	local first_section_line
+	first_section_line=$(find_first_section_marker)
+
+	local new_block
+	new_block=$'\n'"$MARKER_START"$'\n'
+	new_block+=$(cat "$ADDITIONS_FILE")
+	new_block+=$'\n'"$MARKER_END"$'\n'
+
+	if [ -n "$first_section_line" ]; then
+		# Insert before first section marker (global scope)
+		local marker_content
+		marker_content=$(sed -n "${first_section_line}p" "$CONFIG_FILE")
+		log_success "Inserting Distiller block before section marker '$marker_content' at line $first_section_line"
 
 		local tmp_file
 		tmp_file=$(mktemp) || {
@@ -258,31 +202,125 @@ patch_config() {
 		}
 		trap 'rm -f "$tmp_file"' RETURN
 
-		{
-			echo "$before_block"
-			echo "$new_block"
-			echo "$after_block"
-		} >"$tmp_file"
+		head -n "$((first_section_line - 1))" "$CONFIG_FILE" >"$tmp_file"
+		echo "$new_block" >>"$tmp_file"
+		tail -n "+${first_section_line}" "$CONFIG_FILE" >>"$tmp_file"
 
-		if [ ! -s "$tmp_file" ]; then
-			log_error "Generated empty config file"
+		if ! mv "$tmp_file" "$CONFIG_FILE"; then
+			log_error "Cannot replace $CONFIG_FILE"
 			return 1
 		fi
-
-		if ! mv "$tmp_file" "$config_file"; then
-			log_error "Cannot replace $config_file"
-			return 1
-		fi
-		chmod 644 "$config_file"
+		chmod 644 "$CONFIG_FILE"
 		trap - RETURN
+	else
+		# No section markers - append to end
+		log_success "No section markers found - appending Distiller block to end"
+		echo "$new_block" >>"$CONFIG_FILE"
 	fi
 }
 
+# Update existing Distiller block (simple replacement)
+update_distiller_block() {
+	local start_line="$1"
+	local end_line="$2"
+
+	log_success "Updating existing Distiller block (lines $start_line-$end_line)"
+
+	# Extract before, during (for user customizations), and after
+	local before_block
+	before_block=$(head -n "$((start_line - 1))" "$CONFIG_FILE")
+	local during_block
+	during_block=$(sed -n "${start_line},${end_line}p" "$CONFIG_FILE")
+	local after_block
+	after_block=$(tail -n +"$((end_line + 1))" "$CONFIG_FILE")
+
+	# Extract user customizations (lines not in template, excluding markers and comments)
+	local user_customizations=""
+	local template_lines
+	template_lines=$(grep -v '^#' "$ADDITIONS_FILE" | grep -v '^[[:space:]]*$')
+
+	while IFS= read -r line; do
+		# Skip markers, comments, empty lines
+		[[ "$line" =~ ^${MARKER_START}|^${MARKER_END}|^[[:space:]]*#|^[[:space:]]*$ ]] && continue
+
+		# Check if line is in template
+		if ! grep -qF "$line" <<<"$template_lines"; then
+			user_customizations+="$line"$'\n'
+		fi
+	done <<<"$during_block"
+
+	# Build new block
+	local new_block=$'\n'"$MARKER_START"$'\n'
+	new_block+=$(cat "$ADDITIONS_FILE")
+	new_block+=$'\n'
+	if [ -n "$user_customizations" ]; then
+		new_block+=$'\n'"# User customizations"$'\n'
+		new_block+="$user_customizations"
+		new_block+=$'\n'
+	fi
+	new_block+="$MARKER_END"$'\n'
+
+	# Write new config
+	local tmp_file
+	tmp_file=$(mktemp) || {
+		log_error "Cannot create temp file"
+		return 1
+	}
+	trap 'rm -f "$tmp_file"' RETURN
+
+	{
+		printf '%s\n' "$before_block"
+		printf '%s' "$new_block"
+		[ -n "$after_block" ] && printf '%s' "$after_block"
+	} >"$tmp_file"
+
+	if [ ! -s "$tmp_file" ]; then
+		log_error "Generated empty config file"
+		return 1
+	fi
+
+	if ! mv "$tmp_file" "$CONFIG_FILE"; then
+		log_error "Cannot replace $CONFIG_FILE"
+		return 1
+	fi
+	chmod 644 "$CONFIG_FILE"
+	trap - RETURN
+}
+
+patch_config() {
+	[ ! -f "$CONFIG_FILE" ] && {
+		log_error "$CONFIG_FILE not found"
+		return 1
+	}
+
+	# Try to extract existing block
+	local block_range
+	if block_range=$(extract_distiller_block_range); then
+		# Block exists - delete duplicates and update
+		local start_line end_line
+		start_line=$(echo "$block_range" | cut -d: -f1)
+		end_line=$(echo "$block_range" | cut -d: -f2)
+
+		delete_duplicates_outside_block "$start_line" "$end_line"
+		update_distiller_block "$start_line" "$end_line"
+	else
+		# No block - insert new block first, then delete duplicates
+		insert_distiller_block
+
+		# Now extract the newly inserted block's range and delete duplicates
+		if block_range=$(extract_distiller_block_range); then
+			start_line=$(echo "$block_range" | cut -d: -f1)
+			end_line=$(echo "$block_range" | cut -d: -f2)
+			delete_duplicates_outside_block "$start_line" "$end_line"
+		fi
+	fi
+}
+
+# Main execution
 backup_boot
 patch_cmdline
+remove_deprecated_settings "over_voltage"
 patch_config
-remove_setting "$BOOT_DIR/config.txt" "over_voltage" "[Uu]ndervolt"
 
 log_success "Boot configuration patched successfully"
-
 exit 0
