@@ -15,17 +15,17 @@ platform="${1:-$DISTILLER_PLATFORM}"
 if grep -q "^DISTILLER_PLATFORM=" /etc/environment 2>/dev/null; then
 	# Update existing value atomically
 	tmp_file=$(mktemp) || {
-		echo "ERROR: Cannot create temp file" >&2
+		log_error "Cannot create temp file"
 		exit 1
 	}
 	trap 'rm -f "$tmp_file"' EXIT
 
 	if ! sed "s/^DISTILLER_PLATFORM=.*/DISTILLER_PLATFORM=$platform/" /etc/environment >"$tmp_file"; then
-		echo "ERROR: Cannot update DISTILLER_PLATFORM in /etc/environment" >&2
+		log_error "Cannot update DISTILLER_PLATFORM in /etc/environment"
 		exit 1
 	fi
 	if ! mv "$tmp_file" /etc/environment; then
-		echo "ERROR: Cannot replace /etc/environment" >&2
+		log_error "Cannot replace /etc/environment"
 		exit 1
 	fi
 	chmod 644 /etc/environment
@@ -41,29 +41,29 @@ if grep -q "/opt/distiller-cm5-sdk" /etc/environment 2>/dev/null; then
 	mkdir -p "$BACKUP_DIR"
 	backup_file="${BACKUP_DIR}/environment.$(date +%Y%m%d_%H%M%S)"
 	if ! cp /etc/environment "$backup_file"; then
-		echo "ERROR: Cannot backup /etc/environment to $backup_file" >&2
+		log_error "Cannot backup /etc/environment to $backup_file"
 		exit 1
 	fi
 
 	# Use atomic write for migration
 	tmp_file=$(mktemp) || {
-		echo "ERROR: Cannot create temp file" >&2
+		log_error "Cannot create temp file"
 		exit 1
 	}
 	trap 'rm -f "$tmp_file"' EXIT
 
 	if ! sed 's|/opt/distiller-cm5-sdk|/opt/distiller-sdk|g' /etc/environment >"$tmp_file"; then
-		echo "ERROR: Cannot migrate SDK paths in /etc/environment" >&2
+		log_error "Cannot migrate SDK paths in /etc/environment"
 		exit 1
 	fi
 	if ! mv "$tmp_file" /etc/environment; then
-		echo "ERROR: Cannot replace /etc/environment" >&2
+		log_error "Cannot replace /etc/environment"
 		exit 1
 	fi
 	chmod 644 /etc/environment
 	trap - EXIT
 
-	echo "Migrated legacy SDK paths in /etc/environment (backup: $backup_file)"
+	log_success "Migrated legacy SDK paths in /etc/environment (backup: $backup_file)"
 fi
 
 while IFS= read -r line; do
@@ -79,5 +79,7 @@ done <"$DATA_DIR/environment/distiller-vars.env"
 
 # Ensure /etc/environment is world-readable
 chmod 644 /etc/environment
+
+log_success "Environment variables configured"
 
 exit 0
