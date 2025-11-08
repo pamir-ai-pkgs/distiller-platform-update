@@ -2,6 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=usr/share/distiller-platform-update/lib/shared.sh
 source "$SCRIPT_DIR/shared.sh"
 
 [ "$EUID" -eq 0 ] || {
@@ -76,13 +77,13 @@ platform=$("$LIB_DIR/platform-detect.sh") || {
 
 # Validate platform against whitelist (prevent injection)
 case "$platform" in
-	cm5|radxa-zero3|armsom-cm5)
-		export DISTILLER_PLATFORM="$platform"
-		;;
-	*)
-		log_error "Invalid platform detected: $platform"
-		exit 1
-		;;
+cm5 | radxa-zero3 | armsom-cm5)
+	export DISTILLER_PLATFORM="$platform"
+	;;
+*)
+	log_error "Invalid platform detected: $platform"
+	exit 1
+	;;
 esac
 
 # Run update phases
@@ -102,8 +103,11 @@ fi
 # Developer tools (non-fatal)
 "$SCRIPTS_DIR/nvm-install.sh" || true
 
-# Claude Code (non-fatal) - already installed in incremental update path
-[ ! -x /usr/local/bin/claude ] && "$SCRIPTS_DIR/claude-code-installer.sh" || true
+# Claude Code reinstall for platform < 2.0.0 (non-fatal)
+"$SCRIPTS_DIR/claude-code-installer.sh" --reinstall || true
+
+# Platform info cleanup (remove legacy DISTILLER_PACKAGES_INSTALLED)
+"$SCRIPTS_DIR/platform-update.sh" || true
 
 # Update version
 update_platform_version "$new_version"
