@@ -17,7 +17,7 @@ configure)
 	if [ ! -f "$PLATFORM_INFO" ]; then
 		platform=$("$LIB_DIR/platform-detect.sh")
 		cat >"$PLATFORM_INFO" <<EOF
-DISTILLER_PLATFORM_VERSION=$(cat "$VERSION_FILE")
+DISTILLER_PLATFORM_VERSION=0.0.0
 DISTILLER_INSTALL_DATE=$(date -Iseconds)
 DISTILLER_INSTALL_METHOD=apt
 DISTILLER_PLATFORM=$platform
