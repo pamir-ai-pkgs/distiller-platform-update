@@ -18,9 +18,9 @@ Depends: ${misc:Depends},
          polkitd | policykit-1,
          lsb-release,
          curl,
-         libblockdev-mdraid2
-Recommends: distiller-genesis-common | distiller-genesis-cm5 | distiller-genesis-rockchip,
-            ripgrep
+         libblockdev-mdraid2,
+         distiller-genesis-common | distiller-genesis-cm5 | distiller-genesis-rockchip,
+Recommends: ripgrep
 Description: Platform update tool for Distiller systems
  Automatically applies platform-level system configuration updates to bring
  older Distiller images up to parity with latest pi-gen builds.
