@@ -43,6 +43,7 @@ The package uses a multi-phase update system triggered by `debian/postinst`:
 1. **Platform Detection** (`lib/platform-detect.sh`)
    - Reads `/proc/cpuinfo` and `/proc/device-tree/model` to identify hardware
    - Returns: `cm5`, `radxa-zero3`, `armsom-cm5`, or `unknown`
+   - **Platform Validation**: The orchestrator validates detected platform against a whitelist (`cm5|radxa-zero3|armsom-cm5`) to prevent injection attacks via malformed `/proc/device-tree/model` content
 
 2. **Version Check** (`lib/update-orchestrator.sh`)
    - Compares `/etc/distiller-platform-info` version with `UPDATE_THRESHOLD_VERSION` (2.0.0)
@@ -61,9 +62,20 @@ The package uses a multi-phase update system triggered by `debian/postinst`:
    - `nvm-install.sh` - NVM + Node.js v20.19.5 for distiller user
    - `claude-code-installer.sh` - Claude Code CLI installation
 
+   **Phase Ordering Constraints**:
+   - `apt-repos.sh` must run first (other phases may need packages from Distiller repos)
+   - `env-vars.sh` must run before phases that rely on `DISTILLER_PLATFORM` variable
+   - `boot-patcher.sh` should run late (requires `/boot/firmware` to exist)
+   - Developer tools (nvm-install.sh, claude-code-installer.sh) run last with `|| true` (non-fatal)
+
 4. **Version Tracking**
    - Updates `DISTILLER_PLATFORM_VERSION` in `/etc/distiller-platform-info`
-   - Stores installation metadata (date, method, platform, configuration flags)
+   - Stores installation metadata (date, method, platform)
+   - Tracks component installation status with flags:
+     - `APT_REPOS_CONFIGURED`, `ENV_VARS_CONFIGURED`, `USER_GROUPS_CONFIGURED`
+     - `UDEV_RULES_CONFIGURED`, `SUDOERS_CONFIGURED`, `AUTOMOUNT_CONFIGURED`
+     - `LOGROTATE_CONFIGURED`, `BOOT_PATCHER_CONFIGURED`
+     - `NVM_INSTALLED`, `CLAUDE_CODE_INSTALLED`
 
 ### Boot Configuration Patcher
 
@@ -75,8 +87,8 @@ The package uses a multi-phase update system triggered by `debian/postinst`:
 - Preserves user customizations within block, appends to "User customizations" section
 
 **Duplicate Handling**:
-- `comment_out_duplicates()` searches for directives outside Distiller block
-- Comments duplicates with `# (Moved to Distiller section)` prefix
+- `delete_duplicates_outside_block()` searches for directives outside Distiller block
+- Deletes duplicates along with their comment blocks (not just commenting out)
 - Handles `dtoverlay=`, `dtparam=`, and standard key-value directives differently
 
 **Idempotency**:
@@ -89,8 +101,16 @@ The package uses a multi-phase update system triggered by `debian/postinst`:
 - Directive keys use `section:key` format internally
 
 **Directive Removal**:
-- `remove_setting()` removes deprecated settings (e.g., `over_voltage`)
-- Optionally removes associated comment lines matching regex pattern
+- `remove_deprecated_settings()` removes deprecated settings (e.g., `over_voltage`)
+- Automatically removes associated comment blocks above directives
+
+#### Kernel Command Line Patching
+
+`boot-patcher.sh` also modifies `/boot/firmware/cmdline.txt`:
+- **No markers**: Unlike config.txt, cmdline.txt changes are additive only
+- **Single-line constraint**: cmdline.txt must remain on a single line (checked with warning)
+- **Idempotent**: Only appends if additions not already present
+- **Backup**: Timestamped backups created before modification
 
 ### Shared Library (`lib/shared.sh`)
 
@@ -113,6 +133,12 @@ All scripts source `shared.sh` via:
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/shared.sh"
 ```
+
+**Path Resolution**:
+- `lib/*.sh` scripts: `source "$SCRIPT_DIR/shared.sh"`
+- `scripts/*.sh` scripts: `source "$(dirname "$SCRIPT_DIR")/lib/shared.sh"`
+
+All paths are resolved relative to script location to support both installed and dev environments.
 
 **Version Detection Edge Cases**:
 - File missing → returns empty string → treated as "0.0.0" → full update
@@ -209,6 +235,34 @@ diff /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/con
 # Restore if needed
 sudo cp /var/backups/distiller-platform-update/boot/config.txt.* /boot/firmware/config.txt
 ```
+
+### Complete Test Workflow for Script Changes
+
+When modifying update scripts (e.g., boot-patcher.sh, apt-repos.sh):
+
+```bash
+# 1. Validate shell script syntax
+shellcheck usr/share/distiller-platform-update/scripts/*.sh
+shellcheck usr/share/distiller-platform-update/lib/*.sh
+
+# 2. Build package with changes
+just clean && just build
+
+# 3. Test in VM or test device (DESTRUCTIVE - requires root)
+sudo dpkg -i dist/distiller-platform-update_*.deb
+
+# 4. Verify changes applied
+cat /etc/distiller-platform-info
+tail -50 /var/log/distiller-platform-update/platform-update.log
+
+# 5. Check backups created
+ls -lat /var/backups/distiller-platform-update/boot/
+
+# 6. Reboot if boot-patcher was modified
+sudo reboot
+```
+
+**Important**: The `debian/distiller-platform-update/` directory contains build artifacts. Always edit files in `usr/share/distiller-platform-update/`, not the debian subdirectory.
 
 ### Version Bumping
 
@@ -349,8 +403,8 @@ sudo /usr/share/distiller-platform-update/lib/update-orchestrator.sh
 grep -A 30 "Distiller CM5 Hardware Configuration" /boot/firmware/config.txt
 ls -lat /var/backups/distiller-platform-update/boot/
 
-# Validate shell scripts
-shellcheck usr/share/distiller-platform-update/**/*.sh
+# Validate all shell scripts (one command)
+find usr/share/distiller-platform-update -name "*.sh" -exec shellcheck {} +
 ```
 
 ### Build and Test Cycle
